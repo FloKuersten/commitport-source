@@ -28,7 +28,7 @@ No database, no tracking, no status-update busywork.
 > ### ⭐ Source-available — a license is required to use it
 > The full source lives here to **read, audit, and build**. It is **not** free-to-use:
 > running commitport for real work needs a **one-time license**.
-> **→ [Get yours at commitport.com](https://commitport.com/#pricing) — €3.99, one-time.** Takes 30 seconds and funds the project.
+> **→ [Get yours at commitport.com](https://commitport.com/#pricing) — €19, one-time.** Takes 30 seconds and funds the project.
 
 ---
 
@@ -132,7 +132,7 @@ commitport is **source-available**: the code here is public so you can read it, 
 - 💳 You **need a license** to use commitport for any client, business, or production work.
 - 🚫 You **may not** resell, sublicense, or redistribute it as a competing product.
 
-**€3.99, one-time** — a single license covers **unlimited projects** for one organization. Buy once, self-host forever.
+**€19, one-time** — a single license covers **unlimited projects** for one organization. Buy once, self-host forever.
 
 <div align="center">
 
