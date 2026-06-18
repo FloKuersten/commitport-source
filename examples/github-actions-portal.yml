@@ -1,0 +1,63 @@
+# Auto-rebuild your client portal on every push and publish it to GitHub Pages.
+#
+# Setup (one time):
+#   1. Copy this file to .github/workflows/portal.yml in your project repo.
+#   2. Add a portal.config.json at your repo root (see config/portal.config.json
+#      in the commitport repo for the shape — title, accent, dictionary, markers).
+#   3. Settings → Pages → Source: "GitHub Actions".
+#
+# commitport is source-available; you must hold a license to use it
+# (https://commitport.com). This vendors the published source to run in CI.
+
+name: Update client portal
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history — commitport reads your git log
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Get commitport
+        run: git clone --depth 1 https://github.com/FloKuersten/commitport.git "$RUNNER_TEMP/commitport"
+
+      - name: Build the portal
+        working-directory: ${{ runner.temp }}/commitport
+        run: |
+          node scripts/generate.mjs \
+            --repo "$GITHUB_WORKSPACE" \
+            --config "$GITHUB_WORKSPACE/portal.config.json" \
+            --out "$GITHUB_WORKSPACE/public"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

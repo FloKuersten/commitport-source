@@ -77,6 +77,8 @@ commitport build    # generate the portal into ./public
 
 > You only need **git** installed. A license is still required to use it — see [License](#license--pricing).
 
+**Automate it:** copy [`examples/github-actions-portal.yml`](examples/github-actions-portal.yml) into your repo's `.github/workflows/` to rebuild and publish your portal to GitHub Pages on every push.
+
 ## How to flag commits for clients
 
 This is the only behavior change your team needs — keep using [Conventional Commits](https://www.conventionalcommits.org/), and add a marker when a commit should reach the client.
