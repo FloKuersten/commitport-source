@@ -1,0 +1,54 @@
+#!/bin/sh
+# Project G — commit-msg hook.
+# Delegates to scripts/check-commit-msg.mjs, which enforces the Conventional
+# Commits format AND dry-runs the real portal pipeline: it tells you when a
+# commit will publish (and exactly how it will read), and rejects a publishing
+# commit whose text trips the leak guard — at commit time, not in CI.
+#
+# Internal commits (chore, refactor, ci...) are perfectly valid; they're simply
+# filtered out of the portal later and are never blocked by the leak guard.
+#
+# Install:  cp hooks/commit-msg .git/hooks/commit-msg && chmod +x .git/hooks/commit-msg
+#       or: npm run hooks
+
+if command -v node >/dev/null 2>&1 && [ -f scripts/check-commit-msg.mjs ]; then
+  exec node scripts/check-commit-msg.mjs "$1"
+fi
+
+# ---- Fallback (node unavailable): format-only validation. -------------------
+
+msg=$(head -n 1 "$1")
+
+# Always allow git's own machine-generated messages.
+case "$msg" in
+  Merge\ *|Revert\ *|fixup!*|squash!*|"Initial commit") exit 0 ;;
+esac
+
+# Strip an optional leading gitmoji shortcode (":sparkles:") before validating.
+stripped=$(printf '%s' "$msg" | sed -E 's/^:[a-z0-9_+-]+:[[:space:]]*//')
+
+# Accept: [optional unicode emoji] type[(scope)][!]: description
+pattern='^[^[:alnum:]]*[[:space:]]*(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert|wip)(\([a-z0-9 ._/-]+\))?!?:[[:space:]].+'
+
+if printf '%s' "$stripped" | grep -Eq "$pattern"; then
+  exit 0
+fi
+
+cat >&2 <<'MSG'
+✗ Commit message rejected.
+
+Use Conventional Commits, optionally prefixed with a Gitmoji:
+
+    <type>(<scope>): <description>
+    :emoji: <type>(<scope>): <description>
+
+  Types:  feat fix docs style refactor perf test build ci chore revert
+  Examples:
+    feat(client): add CSV export to the reporting dashboard
+    :ambulance: fix: resolve random logouts on slow connections
+    chore(deps): bump eslint            # internal — kept out of the portal
+
+  To broadcast a hand-written client update, add a body trailer:
+    Client: Reports can now be downloaded as a spreadsheet.
+MSG
+exit 1

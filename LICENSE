@@ -1,0 +1,47 @@
+commitport — Source-Available License
+Copyright (c) 2026 commitport. All rights reserved.
+
+The source code in this repository ("the Software") is made publicly available
+for transparency, evaluation, and modification. This is NOT free or open-source
+software as defined by the Open Source Initiative: a valid, paid license is
+required to USE the Software.
+
+1. PERMITTED, FREE OF CHARGE
+   You may, at no cost:
+   (a) view, audit, fork, and modify the source code;
+   (b) build the Software from source; and
+   (c) run the Software locally to EVALUATE it.
+
+2. REQUIRES A PAID LICENSE
+   Using the Software to generate, publish, operate, or maintain client portals
+   — or any other use in connection with a business, client engagement, or
+   production environment — requires a valid license purchased from
+   https://commitport.com. Evaluation use under Section 1(c) is the only use
+   permitted without a license.
+
+3. GRANT
+   A purchased license grants a single organization a non-exclusive,
+   non-transferable right to use the Software on unlimited projects within that
+   organization, subject to the terms published at https://commitport.com/terms,
+   which govern in the event of any conflict with this summary.
+
+4. RESTRICTIONS
+   You may not, with or without a license:
+   (a) resell, rent, sublicense, or redistribute the Software, or offer it as a
+       hosted or competing product or service;
+   (b) sell, share, or transfer a license key; or
+   (c) remove or alter this notice or the Software's authorship.
+
+5. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM,
+   OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
+
+----------------------------------------------------------------------
+This is a plain-language license summary, not legal advice. Have it reviewed by
+a qualified lawyer before relying on it commercially. The authoritative and
+current terms are those published at https://commitport.com/terms.

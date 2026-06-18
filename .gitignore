@@ -1,0 +1,19 @@
+# Generated portal output — rebuilt from git history, never committed.
+/public/
+node_modules/
+
+# Build artifacts.
+/downloads/
+/build/
+/dist/
+
+# Secrets — never commit.
+.env
+.env.*
+*.pem
+*_key
+*_key.pub
+
+.DS_Store
+Thumbs.db
+*.log

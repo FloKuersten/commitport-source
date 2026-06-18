@@ -1,0 +1,35 @@
+{
+  "name": "commitport",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Turn your git commits into a client-ready progress portal.",
+  "bin": {
+    "commitport": "scripts/generate.mjs"
+  },
+  "scripts": {
+    "build": "node scripts/generate.mjs",
+    "build:ai": "node scripts/generate.mjs --ai",
+    "demo": "node scripts/demo.mjs",
+    "preview": "node scripts/serve.mjs",
+    "hooks": "node scripts/install-hooks.mjs",
+    "test": "node --test \"tests/**/*.test.mjs\"",
+    "build:css": "npm ci --ignore-scripts --no-audit --no-fund && npx --no-install tailwindcss -i assets/tailwind.in.css -o assets/portal.css --content scripts/lib/render.mjs --minify",
+    "check:css": "node scripts/check-css.mjs",
+    "make:icon": "node scripts/make-icon.mjs",
+    "build:exe": "node scripts/build-exe.mjs",
+    "build:installer": "node scripts/build-installer.mjs"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "esbuild": "^0.25.0",
+    "png-to-ico": "^3.0.1",
+    "postject": "^1.0.0-alpha.6",
+    "rcedit": "^5.0.2",
+    "tailwindcss": "3.4.17"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "LicenseRef-commitport-Source-Available"
+}
