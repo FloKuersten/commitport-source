@@ -17,6 +17,10 @@ No database, no tracking, no status-update busywork.
 ![Zero dependencies](https://img.shields.io/badge/dependencies-zero-059669)
 ![Source-available](https://img.shields.io/badge/license-source--available-64748b)
 
+<br/>
+
+<img src="assets/app-window.svg" width="660" alt="The commitport app — pick a project folder, click Generate portal, then open the result." />
+
 </div>
 
 ---
