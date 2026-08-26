@@ -17,6 +17,7 @@ import { execFileSync } from 'node:child_process';
 import { parseCommit, classify } from './lib/parse-commits.mjs';
 import { translate } from './lib/translate.mjs';
 import { auditPublishable, formatViolations } from './lib/guard.mjs';
+import { mergeVocabPacks } from './lib/vocab.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -91,11 +92,18 @@ export function checkCommitMessage(messageText, config, clientTrailer = null) {
     body,
   };
   const safeConfig = { gitmojiMap: {}, typeMap: {}, ...config };
+  if (safeConfig.vocabPacks?.length) {
+    safeConfig.dictionary = mergeVocabPacks(safeConfig.dictionary, safeConfig.vocabPacks);
+  }
   const item = classify(parseCommit(raw), safeConfig);
   if (!item) return { ok: true, errors: [], willPublish: false, preview: null };
 
   const { message } = translate(item, safeConfig);
-  const violations = auditPublishable([message], safeConfig.guard?.allow ?? []);
+  const violations = auditPublishable(
+    [message],
+    safeConfig.guard?.allow ?? [],
+    safeConfig.guard?.deny ?? []
+  );
   if (violations.length) {
     return {
       ok: false,

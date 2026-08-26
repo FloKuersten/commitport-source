@@ -64,6 +64,53 @@ const fmtDate = (iso) =>
 const dayKey = (iso) => new Date(iso).toISOString().slice(0, 10);
 
 /**
+ * Optional grouping. When config.groupByMessage is true, commits that produce
+ * the SAME client-facing message on the SAME day are folded into one timeline
+ * entry carrying a `count` (e.g. five "Fixed a reliability issue" commits in a
+ * day become one line, shown as "×5"). Different days or different messages
+ * stay separate. Input order is preserved — callers pass the already-sorted
+ * (newest-first) list, so the first occurrence represents the group. Off by
+ * default; returns the input untouched so existing portals are unchanged.
+ */
+export function collapseItems(items, { groupByMessage = false } = {}) {
+  if (!groupByMessage) return items;
+  const byKey = new Map();
+  const out = [];
+  for (const it of items) {
+    // NUL separator is collision-proof: published text is stripped of control
+    // characters (incl. NUL) upstream in parse-commits, so it can't appear here.
+    const key = `${dayKey(it.isoDate)}\x00${it.category}\x00${it.message}`;
+    const seen = byKey.get(key);
+    if (seen) {
+      seen.count += 1;
+      continue;
+    }
+    const entry = { ...it, count: 1 };
+    byKey.set(key, entry);
+    out.push(entry);
+  }
+  return out;
+}
+
+/**
+ * Assign each entry a stable, privacy-safe anchor id for deep-linking (e.g.
+ * portal/#u-ab12…). Derived from day + message + occurrence index — NEVER the
+ * commit hash (private repo metadata) — so it survives rebuilds and reveals
+ * nothing. The same algorithm runs in every renderer, so the index.html anchor
+ * and the data.json id always match. Exported for testing.
+ */
+export function assignEntryIds(items) {
+  const seen = new Map();
+  return items.map((it) => {
+    const key = `${dayKey(it.isoDate)}|${it.message}`;
+    const n = seen.get(key) ?? 0;
+    seen.set(key, n + 1);
+    const id = 'u-' + createHash('sha256').update(`${key}|${n}`).digest('hex').slice(0, 16);
+    return { ...it, id };
+  });
+}
+
+/**
  * The sanitized public data source. This is the entire "backend".
  * Dates are published at DAY resolution only: second-resolution timestamps and
  * timezone offsets would fingerprint the team's working hours and locations.
@@ -75,11 +122,18 @@ export function renderJSON(items, config, generatedAt) {
       subtitle: config.site.subtitle,
       generatedAt: dayKey(generatedAt),
       count: items.length,
-      items: items.map((it) => ({
+      items: assignEntryIds(items).map((it) => ({
+        id: it.id, // stable anchor: portal/#<id>
         date: dayKey(it.isoDate),
         emoji: it.emoji,
         category: it.category,
         message: it.message,
+        // Only present (and > 1) when grouping folded duplicate commits, so a
+        // single-commit entry's JSON shape is unchanged.
+        ...(it.count > 1 ? { count: it.count } : {}),
+        // Flag (not the bytes) so data.json stays lean; the image itself is
+        // inlined into index.html only.
+        ...(it.image ? { hasImage: true } : {}),
       })),
     },
     null,
@@ -113,15 +167,16 @@ export function renderAtom(items, config, generatedAt) {
       const key = `${day}|${it.message}`;
       const n = seen.get(key) ?? 0;
       seen.set(key, n + 1);
-      const id =
-        'urn:portal:' +
-        createHash('sha256').update(`${key}|${n}`).digest('hex').slice(0, 24);
+      const h = createHash('sha256').update(`${key}|${n}`).digest('hex');
+      const id = 'urn:portal:' + h.slice(0, 24);
+      // Deep-link the feed entry to the same anchor the portal + data.json use.
+      const anchor = 'u-' + h.slice(0, 16);
       return `  <entry>
     <id>${id}</id>
     <title>${xmlEsc(`${it.emoji} ${it.message}`)}</title>
     <updated>${day}T00:00:00Z</updated>
     <category term="${xmlEsc(it.category)}"/>
-    <link rel="alternate" href="${xmlEsc(base.href)}"/>
+    <link rel="alternate" href="${xmlEsc(base.href)}#${anchor}"/>
     <content type="text">${xmlEsc(it.message)}</content>
   </entry>`;
     })
@@ -142,6 +197,41 @@ ${entries}
 }
 
 /**
+ * JSON Feed 1.1 (jsonfeed.org) — a standards-based feed automation tools
+ * (Zapier, Slack, custom dashboards) consume without parsing XML. Same privacy
+ * posture as the Atom feed: day-resolution dates, no hashes/authors; item ids
+ * and urls use the shared anchor. Only emitted when site.url is configured.
+ */
+export function renderJsonFeed(items, config, generatedAt) {
+  const { site } = config;
+  if (!isHttpUrl(site.url)) {
+    throw new Error('renderJsonFeed requires a valid http(s) site.url in the config');
+  }
+  const base = new URL(site.url.endsWith('/') ? site.url : site.url + '/');
+  return (
+    JSON.stringify(
+      {
+        version: 'https://jsonfeed.org/version/1.1',
+        title: site.title,
+        ...(site.subtitle ? { description: site.subtitle } : {}),
+        home_page_url: base.href,
+        feed_url: new URL('feed.json', base).href,
+        items: assignEntryIds(items).map((it) => ({
+          id: it.id,
+          url: `${base.href}#${it.id}`,
+          title: `${it.emoji} ${it.message}`,
+          content_text: it.message,
+          date_published: `${dayKey(it.isoDate)}T00:00:00Z`,
+          tags: [it.category],
+        })),
+      },
+      null,
+      2
+    ) + '\n'
+  );
+}
+
+/**
  * The client-facing timeline. Static, fully self-contained: the precompiled
  * Tailwind subset (assets/portal.css) is inlined, so the page makes zero
  * network requests — no CDN, no JS, nothing to block or go down.
@@ -149,6 +239,10 @@ ${entries}
  */
 export function renderHTML(items, config, generatedAt, cssText = '') {
   const { site } = config;
+
+  // Stable per-entry anchors so a client can be deep-linked to one update
+  // (portal/#u-…); the same ids appear in data.json and the Atom feed.
+  items = assignEntryIds(items);
 
   // The accent lands in a CSS context, where HTML-escaping is the wrong
   // defense — validate the shape instead and fall back to the default.
@@ -163,34 +257,47 @@ export function renderHTML(items, config, generatedAt, cssText = '') {
   // Feed discovery link (the feed itself is only generated when site.url is a
   // valid http(s) URL — same gate here, and the href is a constant).
   const feedLink = isHttpUrl(site.url)
-    ? `\n  <link rel="alternate" type="application/atom+xml" title="${esc(site.title)}" href="feed.xml" />`
+    ? `\n  <link rel="alternate" type="application/atom+xml" title="${esc(site.title)}" href="feed.xml" />` +
+      `\n  <link rel="alternate" type="application/feed+json" title="${esc(site.title)}" href="feed.json" />`
     : '';
 
-  // Group items by calendar day, newest first.
+  // Group items by calendar day. Newest-first by default; config.order
+  // "oldest-first" reads the portal as a forward-moving journal (older -> newer).
+  const oldestFirst = config.order === 'oldest-first';
   const groups = new Map();
   for (const it of items) {
     const key = dayKey(it.isoDate);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(it);
   }
-  const orderedDays = [...groups.keys()].sort((a, b) => (a < b ? 1 : -1));
+  const orderedDays = [...groups.keys()].sort((a, b) =>
+    a < b ? (oldestFirst ? -1 : 1) : oldestFirst ? 1 : -1
+  );
 
   const timeline = orderedDays
     .map((day) => {
-      const dayItems = groups.get(day);
+      const dayItems = oldestFirst ? [...groups.get(day)].reverse() : groups.get(day);
       const cards = dayItems
         .map((it) => {
           const color = CATEGORY_COLORS[it.category] || CATEGORY_COLORS.Update;
           return `
-          <li class="relative pl-10">
-            <span class="absolute left-0 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-white text-lg shadow ring-1 ring-gray-200 dark:bg-slate-800 dark:ring-slate-700">${esc(
+          <li id="${it.id}" class="relative pl-10">
+            <span aria-hidden="true" class="absolute left-0 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-white text-lg shadow ring-1 ring-gray-200 dark:bg-slate-800 dark:ring-slate-700">${esc(
               it.emoji
             )}</span>
             <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm transition hover:shadow-md dark:border-slate-700 dark:bg-slate-800">
               <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${color}">${esc(
                 it.category
-              )}</span>
-              <p class="mt-2 text-[15px] leading-relaxed text-gray-800 dark:text-gray-200">${esc(it.message)}</p>
+              )}</span>${
+                it.count > 1
+                  ? ` <span class="text-xs text-gray-400 dark:text-gray-500">×${it.count}</span>`
+                  : ''
+              }
+              <p class="mt-2 text-[15px] leading-relaxed text-gray-800 dark:text-gray-200">${esc(it.message)}</p>${
+                it.image
+                  ? `\n              <img src="${it.image}" alt="" loading="lazy" style="margin-top:.6rem;max-width:100%;height:auto;border-radius:.5rem;display:block;border:1px solid rgba(100,116,139,.2)" />`
+                  : ''
+              }
             </div>
           </li>`;
         })
@@ -214,12 +321,12 @@ export function renderHTML(items, config, generatedAt, cssText = '') {
     </div>`;
 
   return `<!doctype html>
-<html lang="en" class="h-full">
+<html lang="${esc(site.lang || 'en')}" class="h-full">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" />
   <meta name="referrer" content="no-referrer" />
   <meta name="color-scheme" content="light dark" />${feedLink}
   <title>${esc(site.title)}</title>
@@ -238,10 +345,16 @@ export function renderHTML(items, config, generatedAt, cssText = '') {
 </head>
 <body class="min-h-full text-gray-900 antialiased dark:text-gray-100">
   <main class="mx-auto max-w-2xl px-5 py-14 sm:py-20">
-    <header class="mb-12">
+    <header class="mb-12">${
+      site.logoData
+        ? `\n      <img src="${site.logoData}" alt="${esc(site.title)}" style="height:44px;width:auto;margin-bottom:1.25rem;display:block" />`
+        : ''
+    }
       <div class="mb-3 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-500 shadow-sm ring-1 ring-gray-100 dark:bg-slate-800 dark:text-gray-400 dark:ring-slate-700">
-        <span class="h-2 w-2 rounded-full" style="background: var(--accent)"></span>
-        Live progress feed
+        <span class="h-2 w-2 rounded-full" style="background: var(--accent)" aria-hidden="true"></span>
+        Live progress feed${
+          items.length ? ` · ${items.length} update${items.length === 1 ? '' : 's'} shipped` : ''
+        }
       </div>
       <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">${esc(site.title)}</h1>
       <p class="mt-3 text-lg text-gray-600 dark:text-gray-400">${esc(site.subtitle)}</p>
@@ -251,7 +364,11 @@ export function renderHTML(items, config, generatedAt, cssText = '') {
 
     <footer class="mt-16 border-t border-gray-200 pt-6 text-sm text-gray-400 dark:border-slate-700 dark:text-gray-500">
       <p>${esc(site.footer || '')}</p>
-      <p class="mt-1">Last updated ${esc(fmtDate(generatedAt))}.</p>
+      <p class="mt-1">Last updated ${esc(fmtDate(generatedAt))}.</p>${
+        site.poweredBy === false
+          ? ''
+          : `\n      <p class="mt-1">Built with <a href="https://commitport.com" target="_blank" rel="noopener noreferrer" style="color: var(--accent)">commitport</a>.</p>`
+      }
     </footer>
   </main>
 </body>

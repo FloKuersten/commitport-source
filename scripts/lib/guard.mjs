@@ -28,15 +28,34 @@ const redact = (s) => (s.length <= 8 ? s[0] + '***' : s.slice(0, 4) + '***' + s.
 /**
  * Audit the strings that will be published. Returns a list of violations
  * (empty = clean). `allowPatterns` (from config.guard.allow) are regex strings
- * for deliberate exceptions, e.g. a public support email.
+ * for deliberate exceptions, e.g. a public support email. `denyPatterns` (from
+ * config.guard.deny) are org-specific redaction rules — regex strings or
+ * { name, pattern } objects — checked alongside the built-in detectors so a
+ * team can block its own codenames, client names, or internal URL shapes.
  */
-export function auditPublishable(strings, allowPatterns = []) {
+export function auditPublishable(strings, allowPatterns = [], denyPatterns = []) {
   const allow = allowPatterns.map((p) => new RegExp(p, 'i'));
+
+  // Compile user deny rules. Defensive by design: a malformed entry is skipped,
+  // never thrown — callers like the commit-msg hook are fail-open and must not
+  // crash on a typo'd config (the main build pre-validates via validateConfig).
+  const deny = [];
+  for (const p of denyPatterns) {
+    const pattern = typeof p === 'string' ? p : p?.pattern;
+    const label = (typeof p === 'string' ? null : p?.name) || 'rule';
+    if (typeof pattern !== 'string' || !pattern) continue;
+    try {
+      deny.push({ name: `custom:${label}`, re: new RegExp(pattern, 'i') });
+    } catch {
+      /* invalid regex — skip; validateConfig surfaces it for the main build */
+    }
+  }
+  const checks = deny.length ? [...PATTERNS, ...deny] : PATTERNS;
   const violations = [];
 
   for (const text of strings) {
     if (typeof text !== 'string' || !text) continue;
-    for (const { name, re } of PATTERNS) {
+    for (const { name, re } of checks) {
       const m = text.match(re);
       if (!m) continue;
       if (allow.some((a) => a.test(m[0]))) continue;

@@ -26,6 +26,7 @@ const FORMAT = [
   '%aI', // author date, strict ISO 8601
   '%s', // subject
   '%(trailers:key=Client,valueonly,unfold=true)', // genuine Client: trailer(s)
+  '%(trailers:key=Image,valueonly,unfold=true)', // optional Image: trailer (screenshot)
   '%b', // body
 ].join(FS);
 
@@ -74,11 +75,11 @@ export function parseLogOutput(out) {
     if (!record.trim()) continue;
 
     const parts = record.split(FS);
-    if (parts.length !== 5) {
+    if (parts.length !== 6) {
       console.warn('portal: dropping malformed log record (unexpected field count)');
       continue;
     }
-    const [hash, isoDate, subject, trailerRaw, body] = parts;
+    const [hash, isoDate, subject, trailerRaw, imageRaw, body] = parts;
     if (!HASH_RE.test(hash.trim())) {
       console.warn('portal: dropping malformed log record (bad hash)');
       continue;
@@ -88,14 +89,16 @@ export function parseLogOutput(out) {
       continue;
     }
 
-    // Multiple Client: trailers -> first one wins.
+    // Multiple Client:/Image: trailers -> first one wins.
     const clientTrailer = sanitizeText(trailerRaw).split('\n')[0].trim() || null;
+    const imageTrailer = sanitizeText(imageRaw).split('\n')[0].trim() || null;
 
     records.push({
       hash: hash.trim(),
       isoDate: isoDate.trim(),
       subject: sanitizeText(subject).trim(),
       clientTrailer,
+      imageTrailer,
       body: sanitizeText(body),
     });
   }
@@ -155,6 +158,7 @@ export function parseCommit(raw) {
     breaking,
     description,
     clientMessage: raw.clientTrailer ?? null,
+    imagePath: raw.imageTrailer ?? null,
     body: raw.body || '',
   };
 }

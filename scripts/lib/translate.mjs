@@ -30,6 +30,35 @@ const tidy = (s) =>
 // Collapse consecutive identical words ("layout layout" -> "layout").
 const dedupeWords = (s) => s.replace(/\b(\w+)(?:\s+\1\b)+/gi, '$1');
 
+// Common two-word (phrasal) verbs -> one friendly verb, matched BEFORE the
+// single-word verbMap. Mapping only the leading word doubles the meaning:
+// ":zap: speed up search" would take the category verb "Sped up" and keep
+// "speed up" in the body -> "Sped up speed up search". Consuming the whole
+// phrasal verb fixes it -> "Sped up search".
+const PHRASAL_VERBS = {
+  'speed up': 'Sped up',
+  'clean up': 'Cleaned up',
+  'set up': 'Set up',
+  'roll out': 'Rolled out',
+  'roll back': 'Rolled back',
+  'lock down': 'Secured',
+  'back up': 'Backed up',
+  'scale up': 'Scaled',
+  'spin up': 'Launched',
+  'shut down': 'Retired',
+  'lay out': 'Laid out',
+};
+
+/**
+ * Optional first-person voice. With config.voice === 'we', a deterministic
+ * message ("Launched the dashboard") becomes "We launched the dashboard": the
+ * leading friendly verb (always a plain past-tense word, never an acronym) is
+ * lowercased, the rest — acronyms, proper nouns — is untouched. Any other value,
+ * including the default 'impersonal', is a no-op.
+ */
+const applyVoice = (message, voice) =>
+  voice === 'we' && message ? 'We ' + message.charAt(0).toLowerCase() + message.slice(1) : message;
+
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
@@ -63,10 +92,14 @@ export function translate(commit, config) {
   const verbMap = config.verbMap || {};
   const words = text.split(/\s+/).filter(Boolean);
   const firstKey = (words[0] || '').toLowerCase().replace(/[^a-z]/g, '');
+  const twoKey = words.slice(0, 2).join(' ').toLowerCase().replace(/[^a-z ]/g, '').trim();
 
   let verb;
   let rest;
-  if (verbMap[firstKey]) {
+  if (PHRASAL_VERBS[twoKey]) {
+    verb = PHRASAL_VERBS[twoKey]; // engineer's phrasal verb, consumed whole
+    rest = words.slice(2);
+  } else if (verbMap[firstKey]) {
     verb = verbMap[firstKey]; // engineer's own verb, made friendly
     rest = words.slice(1);
   } else {
@@ -80,8 +113,21 @@ export function translate(commit, config) {
   let message = body ? `${verb} ${body}` : verb;
   message = dedupeWords(tidy(message));
   message = message.charAt(0).toUpperCase() + message.slice(1);
+  message = applyVoice(message, config.voice);
 
   return { message, source: 'dictionary' };
+}
+
+/**
+ * Build the AI user-message content. When a changed-files summary is attached
+ * (commit.changes — paths + line counts, NOT the code diff), include it so the
+ * model has real context for terse messages like "wip" or "fixed stuff".
+ * Truncated to keep the request small. Exported for testing.
+ */
+export function aiUserContent(commit) {
+  const base = `${commit.type || ''}: ${commit.description}`;
+  const changes = commit.changes ? String(commit.changes).trim() : '';
+  return changes ? `${base}\n\nChanged files (for context):\n${changes.slice(0, 800)}` : base;
 }
 
 /**
@@ -112,8 +158,11 @@ export async function translateWithAI(commit, config, { enableAI = false } = {})
         system:
           'You rewrite a single software commit into ONE short, non-technical, ' +
           'benefit-focused sentence for a client. Describe user impact, not ' +
-          'implementation. No jargon, no commit prefixes, no quotes. Max 16 words.',
-        messages: [{ role: 'user', content: `${commit.type || ''}: ${commit.description}` }],
+          'implementation. No jargon, no commit prefixes, no quotes. Max 16 words. ' +
+          'You may be given a list of changed files for context — use it to infer ' +
+          'the user-facing impact when the message itself is terse.' +
+          (config.voice === 'we' ? " Write in the first person plural, starting with 'We '." : ''),
+        messages: [{ role: 'user', content: aiUserContent(commit) }],
       }),
     });
     if (!res.ok) return deterministic;

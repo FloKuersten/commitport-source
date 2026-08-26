@@ -2,9 +2,12 @@
   "site": {
     "title": "Project G — Progress Timeline",
     "subtitle": "Everything we've shipped for you, in plain English.",
+    "lang": "en",
     "accent": "#6366f1",
     "footer": "Updated automatically from our engineering team's work. No spin, just progress.",
-    "url": "https://example.com/portal/"
+    "url": "https://example.com/portal/",
+    "logo": "",
+    "poweredBy": true
   },
   "range": {
     "sinceTag": null,
@@ -13,9 +16,18 @@
   },
   "includePaths": [],
   "publishMode": "gitmoji",
+  "groupByMessage": false,
+  "voice": "impersonal",
+  "order": "newest-first",
+  "vocabPacks": [],
   "clientScopes": ["client", "public"],
   "internalScopes": ["internal", "ci", "deps", "build", "test"],
-  "guard": { "allow": [] },
+  "guard": { "allow": [], "deny": [] },
+  "manifest": true,
+  "emailDigest": true,
+  "embed": false,
+  "aiCache": true,
+  "profiles": [],
   "gitmojiMap": {
     ":sparkles:":  { "emoji": "✨",   "category": "New Feature",   "verb": "Launched" },
     ":rocket:":    { "emoji": "🚀", "category": "Deployment",   "verb": "Rolled out" },
@@ -26,7 +38,10 @@
     ":memo:":      { "emoji": "📝", "category": "Documentation","verb": "Published" },
     ":lipstick:":  { "emoji": "💄", "category": "Design",       "verb": "Refreshed" },
     ":globe_with_meridians:": { "emoji": "🌐", "category": "Localization", "verb": "Added support for" },
-    ":wheelchair:":{ "emoji": "♿",   "category": "Accessibility", "verb": "Improved" }
+    ":wheelchair:":{ "emoji": "♿",   "category": "Accessibility", "verb": "Improved" },
+    ":handshake:": { "emoji": "🤝", "category": "Milestone",     "verb": "Reached" },
+    ":tada:":      { "emoji": "🎉", "category": "Milestone",     "verb": "Completed" },
+    ":art:":       { "emoji": "🎨", "category": "Design",        "verb": "Delivered" }
   },
   "typeMap": {
     "feat": { "emoji": "✨",   "category": "New Feature",   "verb": "Launched" },
