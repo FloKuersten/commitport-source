@@ -17,6 +17,7 @@ import { auditPublishable, formatViolations } from './lib/guard.mjs';
 import { loadImageDataUri } from './lib/media.mjs';
 import { VOCAB_PACKS, mergeVocabPacks } from './lib/vocab.mjs';
 import { buildManifest, verifyManifest } from './lib/manifest.mjs';
+import { diagnose, formatReport } from './lib/doctor.mjs';
 import { recentItems, renderEmailHtml, renderUpdateMarkdown, renderEmbed } from './lib/digest.mjs';
 import { loadCache, saveCache, cacheKey } from './lib/cache.mjs';
 import { launchGui } from './gui.mjs';
@@ -253,6 +254,63 @@ async function main() {
     const ti = argv.indexOf('--template');
     return initConfig(ti >= 0 ? argv[ti + 1] : null);
   }
+  // `commitport doctor` explains a setup BEFORE it disappoints someone: why
+  // nothing would publish, what the guard would block, what's misconfigured.
+  if (argv[0] === 'doctor') {
+    const a = parseArgs(argv.slice(1));
+    let config;
+    try {
+      config = loadConfig(a.config);
+      validateConfig(config);
+    } catch (err) {
+      console.error(`FAIL  Config invalid — ${err.message}`);
+      process.exitCode = 1;
+      return;
+    }
+    if (config.vocabPacks?.length)
+      config.dictionary = mergeVocabPacks(config.dictionary, config.vocabPacks);
+    const range = {
+      sinceTag: a.since ?? config.range?.sinceTag ?? null,
+      after: a.after ?? config.range?.after ?? null,
+      before: a.before ?? config.range?.before ?? null,
+      includePaths: config.includePaths ?? [],
+      cwd: a.repo ? resolve(a.repo) : BASE,
+    };
+    let raw = [];
+    try {
+      raw = readGitLog(range);
+    } catch (err) {
+      console.error(`FAIL  Could not read git history — ${err.message}`);
+      process.exitCode = 1;
+      return;
+    }
+    const parsed = raw.map(parseCommit);
+    const classified = parsed.map((c) => classify(c, config)).filter(Boolean);
+    const messages = classified.map((c) => translate(c, config).message);
+    const guardHits = auditPublishable(
+      messages,
+      config.guard?.allow ?? [],
+      config.guard?.deny ?? []
+    );
+    let hasCss = true;
+    try {
+      readAsset('portal.css', 'assets/portal.css');
+    } catch {
+      hasCss = false;
+    }
+    const report = diagnose({
+      config,
+      parsed,
+      classified,
+      scanned: raw.length,
+      hasCss,
+      guardHits,
+    });
+    console.log(formatReport(report));
+    if (!report.ok) process.exitCode = 1;
+    return;
+  }
+
   // `commitport stats [--repo dir]` prints a publish summary without writing.
   if (argv[0] === 'stats') {
     const a = parseArgs(argv.slice(1));

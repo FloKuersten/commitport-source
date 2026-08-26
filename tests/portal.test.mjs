@@ -15,6 +15,7 @@ import { loadImageDataUri } from '../scripts/lib/media.mjs';
 import { mergeVocabPacks } from '../scripts/lib/vocab.mjs';
 import { buildManifest, verifyManifest } from '../scripts/lib/manifest.mjs';
 import { loadCache, saveCache, cacheKey } from '../scripts/lib/cache.mjs';
+import { diagnose, formatReport } from '../scripts/lib/doctor.mjs';
 import { recentItems, renderEmailHtml, renderUpdateMarkdown, renderEmbed } from '../scripts/lib/digest.mjs';
 import { resolve, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -925,4 +926,76 @@ test('both published bundles include every module their entry points import', ()
     }
     assert.deepEqual(missing, [], `${packer} FILES list is missing imported modules`);
   }
+});
+
+// ---------- commitport doctor ----------
+
+test('doctor explains WHY nothing would publish, per cause', () => {
+  const base = { config, scanned: 3, hasCss: true };
+  const c = (subject, opts) => parseCommit(raw(subject, opts));
+
+  // Cause 1: nothing is marked at all.
+  let r = diagnose({ ...base, parsed: [c('chore: tidy'), c('refactor: split')], classified: [] });
+  let f = r.checks.find((x) => x.title === 'Nothing would publish');
+  assert.equal(r.ok, false);
+  assert.match(f.detail, /no client marker|client gitmoji/i);
+
+  // Cause 2: the internal denylist ate them — a different, more useful answer.
+  r = diagnose({ ...base, parsed: [c(':sparkles: feat(internal): x'), c(':bug: fix(deps): y')], classified: [] });
+  f = r.checks.find((x) => x.title === 'Nothing would publish');
+  assert.match(f.detail, /internal scope/i);
+  assert.match(f.fix, /internalScopes/);
+
+  // Cause 3: explicit mode ignores a lone gitmoji.
+  r = diagnose({
+    ...base,
+    config: { ...config, publishMode: 'explicit' },
+    parsed: [c(':sparkles: feat: x')],
+    classified: [],
+  });
+  assert.match(r.checks.find((x) => x.title === 'Nothing would publish').detail, /explicit/);
+});
+
+test('doctor reports guard blocks, missing css, and a healthy setup', () => {
+  const parsed = [parseCommit(raw(':sparkles: feat(client): ship it'))];
+  const classified = parsed;
+
+  const blocked = diagnose({ config, parsed, classified, scanned: 1, guardHits: [{ pattern: 'x' }] });
+  assert.equal(blocked.ok, false);
+  assert.match(blocked.checks.find((c) => c.level === 'fail').title, /Leak guard/);
+
+  assert.equal(diagnose({ config, parsed, classified, scanned: 1, hasCss: false }).ok, false);
+
+  const healthy = diagnose({ config, parsed, classified, scanned: 1 });
+  assert.equal(healthy.ok, true);
+  assert.ok(healthy.checks.some((c) => c.level === 'pass' && /Client-facing/.test(c.title)));
+});
+
+test('doctor warns on a mis-scoped profile and a placeholder title', () => {
+  const parsed = [parseCommit(raw(':sparkles: feat(acme): x'))];
+  const r = diagnose({
+    config: {
+      ...config,
+      site: { ...config.site, title: 'Your Project — Progress Timeline' },
+      profiles: [
+        { name: 'Acme', out: 'acme', scopes: ['acme'] },
+        { name: 'Globex', out: 'globex', scopes: ['globex'] },
+      ],
+    },
+    parsed,
+    classified: parsed,
+    scanned: 1,
+  });
+  // A profile that silently matches nothing is the whole failure mode.
+  assert.ok(r.checks.some((c) => c.level === 'warn' && /Globex/.test(c.title)));
+  assert.ok(r.checks.some((c) => c.level === 'pass' && /Acme/.test(c.title)));
+  assert.ok(r.checks.some((c) => /placeholder/i.test(c.title)));
+  assert.equal(r.ok, true); // warnings never block a build
+});
+
+test('formatReport surfaces fixes and a summary line', () => {
+  const out = formatReport(diagnose({ config, parsed: [], classified: [], scanned: 0 }));
+  assert.match(out, /FAIL/);
+  assert.match(out, /fix:/);
+  assert.match(out, /problem/);
 });

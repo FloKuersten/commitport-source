@@ -75,6 +75,7 @@ commitport build            # generate the portal into ./public
 commitport build --watch    # rebuild automatically on each new commit or config edit
 commitport verify           # re-check ./public against its manifest.json
 commitport stats            # print a publish summary (by category) without writing
+commitport doctor           # check the setup and explain why nothing would publish
 ```
 
 > You only need **git** installed. A license is still required to use it — see [License](#license--pricing).

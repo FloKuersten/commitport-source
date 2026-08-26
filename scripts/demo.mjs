@@ -4,7 +4,7 @@
 //   node scripts/demo.mjs   ->   writes to ./public, then `npm run preview`.
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -52,7 +52,16 @@ try {
   console.log(`Demo repo: ${tmp}\n`);
   const out = execFileSync(
     'node',
-    [resolve(ROOT, 'scripts/generate.mjs'), '--repo', tmp, '--out', 'public'],
+    // Use the repo-root demo config (branded "Live Client Portal Demo") when
+    // present; config/portal.config.json stays the neutral starter buyers get.
+    [
+      resolve(ROOT, 'scripts/generate.mjs'),
+      '--repo', tmp,
+      '--out', 'public',
+      ...(existsSync(resolve(ROOT, 'portal.config.json'))
+        ? ['--config', 'portal.config.json']
+        : []),
+    ],
     { cwd: ROOT, encoding: 'utf8' }
   );
   process.stdout.write(out);
