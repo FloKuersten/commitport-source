@@ -123,7 +123,9 @@ git commit -m "refactor(auth): extract token validation"
 ]
 ```
 
-Then `feat(acme): …` lands only in Acme's portal and `fix(globex): …` only in Globex's — one client never sees another's work.
+Then `feat(acme): …` lands only in Acme's portal and `fix(globex): …` only in Globex's — one client never sees another's work. An index of all your portals is written to the output root for your own use; it names every client you serve, so it's `noindex` and isn't meant to be handed to any single client.
+
+**Client wants a PDF?** Every portal carries a print stylesheet — Print → Save as PDF gives a clean light-on-white document that keeps each update whole across page breaks and prints the portal's address.
 
 ## Action → impact translation
 

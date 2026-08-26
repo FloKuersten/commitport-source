@@ -232,6 +232,72 @@ export function renderJsonFeed(items, config, generatedAt) {
 }
 
 /**
+ * An index for a multi-client build. With config.profiles each client's portal
+ * lands in its own folder and nothing ties them together — this is the agency's
+ * own landing page listing them, written to the output root. It is NOT
+ * client-facing: it names every client you serve, so it carries noindex and
+ * should sit behind whatever auth the rest of your output does.
+ */
+export function renderProfilesIndex(profiles, config, generatedAt, cssText = '') {
+  const { site } = config;
+  const accent = /^#[0-9a-fA-F]{3,8}$/.test(site.accent || '') ? site.accent : '#6366f1';
+  if (/<\/style/i.test(cssText)) {
+    throw new Error('refusing to inline CSS containing "</style" (style-tag breakout)');
+  }
+  const cards = profiles
+    .map((p) => {
+      const label = p.name || p.out;
+      const n = Number(p.published) || 0;
+      return `
+        <li class="relative pl-10">
+          <span aria-hidden="true" class="absolute left-0 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-white text-lg shadow ring-1 ring-gray-200 dark:bg-slate-800 dark:ring-slate-700">📁</span>
+          <div class="rounded-xl border border-gray-100 bg-white p-4 shadow-sm transition hover:shadow-md dark:border-slate-700 dark:bg-slate-800">
+            <p class="mt-2 text-[15px] leading-relaxed text-gray-800 dark:text-gray-200"><a href="${esc(p.out)}/">${esc(label)}</a></p>
+            <p class="mt-1 text-sm text-gray-400 dark:text-gray-500">${n} update${n === 1 ? '' : 's'} published</p>
+          </div>
+        </li>`;
+    })
+    .join('\n');
+  return `<!doctype html>
+<html lang="${esc(site.lang || 'en')}" class="h-full">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" />
+  <meta name="referrer" content="no-referrer" />
+  <meta name="color-scheme" content="light dark" />
+  <title>${esc(site.title)} — client portals</title>
+  <style>${cssText}</style>
+  <style>
+    :root { --accent: ${accent}; }
+    body { background: #f8fafc; }
+    @media (prefers-color-scheme: dark) { body { background: #0b1120; } }
+  </style>
+</head>
+<body class="min-h-full text-gray-900 antialiased dark:text-gray-100">
+  <main class="mx-auto max-w-2xl px-5 py-14 sm:py-20">
+    <header class="mb-12">
+      <div class="mb-3 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-500 shadow-sm ring-1 ring-gray-100 dark:bg-slate-800 dark:text-gray-400 dark:ring-slate-700">
+        <span class="h-2 w-2 rounded-full" style="background: var(--accent)" aria-hidden="true"></span>
+        ${profiles.length} client portal${profiles.length === 1 ? '' : 's'}
+      </div>
+      <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">${esc(site.title)}</h1>
+      <p class="mt-3 text-lg text-gray-600 dark:text-gray-400">Every client portal generated from this repository.</p>
+    </header>
+    <ul class="space-y-4 border-l border-dashed border-gray-200 pl-0 dark:border-slate-700">${cards}
+    </ul>
+    <footer class="mt-16 border-t border-gray-200 pt-6 text-sm text-gray-400 dark:border-slate-700 dark:text-gray-500">
+      <p>Internal index — it lists every client you serve, so don't hand this link to any one of them.</p>
+      <p class="mt-1">Last updated ${esc(fmtDate(generatedAt))}.</p>
+    </footer>
+  </main>
+</body>
+</html>
+`;
+}
+
+/**
  * The client-facing timeline. Static, fully self-contained: the precompiled
  * Tailwind subset (assets/portal.css) is inlined, so the page makes zero
  * network requests — no CDN, no JS, nothing to block or go down.
@@ -341,6 +407,35 @@ export function renderHTML(items, config, generatedAt, cssText = '') {
         radial-gradient(60rem 60rem at 110% -10%, color-mix(in srgb, var(--accent) 18%, transparent), transparent),
         #0b1120; }
     }
+    /* Print / "Save as PDF" — clients ask for a document they can file or
+       forward, and the dark theme would otherwise follow them onto paper.
+       Forces a light, ink-frugal layout, keeps each update whole across a page
+       break, and prints the portal's address so the PDF says where it came
+       from. Rules live here rather than in the Tailwind subset so no CSS
+       rebuild is required. */
+    @media print {
+      @page { margin: 18mm 16mm; }
+      html, body {
+        background: #fff !important;
+        color: #111 !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      main { max-width: none !important; padding: 0 !important; }
+      /* Cards keep their shape but drop shadows/tints that waste ink. */
+      li > div {
+        box-shadow: none !important;
+        background: #fff !important;
+        border: 1px solid #d4d4d8 !important;
+      }
+      li, section { break-inside: avoid; page-break-inside: avoid; }
+      section > h2 { break-after: avoid; page-break-after: avoid; }
+      img { max-width: 100% !important; }
+      /* Day headings and body copy need real contrast on paper. */
+      h1, h2, h3, p, span { color: #111 !important; }
+      #print-url { display: block !important; }
+    }
+    #print-url { display: none; }
   </style>
 </head>
 <body class="min-h-full text-gray-900 antialiased dark:text-gray-100">
@@ -365,6 +460,9 @@ export function renderHTML(items, config, generatedAt, cssText = '') {
     <footer class="mt-16 border-t border-gray-200 pt-6 text-sm text-gray-400 dark:border-slate-700 dark:text-gray-500">
       <p>${esc(site.footer || '')}</p>
       <p class="mt-1">Last updated ${esc(fmtDate(generatedAt))}.</p>${
+        isHttpUrl(site.url) ? `
+      <p id="print-url" class="mt-1">${esc(site.url)}</p>` : ''
+      }${
         site.poweredBy === false
           ? ''
           : `\n      <p class="mt-1">Built with <a href="https://commitport.com" target="_blank" rel="noopener noreferrer" style="color: var(--accent)">commitport</a>.</p>`

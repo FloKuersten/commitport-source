@@ -12,6 +12,7 @@ import { readGitLog, parseCommit, classify } from './lib/parse-commits.mjs';
 import { translate, translateWithAI } from './lib/translate.mjs';
 import {
   renderJSON, renderHTML, renderAtom, renderJsonFeed, collapseItems, assignEntryIds,
+  renderProfilesIndex,
 } from './lib/render.mjs';
 import { auditPublishable, formatViolations } from './lib/guard.mjs';
 import { loadImageDataUri } from './lib/media.mjs';
@@ -624,6 +625,26 @@ export async function generateAll(opts = {}) {
     });
     results.push(r);
     if (p.name) log(`  ↳ client "${p.name}" -> ${r.outDir}`);
+  }
+  // Each portal lands in its own folder with nothing linking them — write the
+  // agency's own index at the output root so the set is navigable.
+  try {
+    const cssText = readAsset('portal.css', 'assets/portal.css');
+    const outRoot = resolve(BASE, opts.out || 'public');
+    mkdirSync(outRoot, { recursive: true });
+    const listed = config.profiles.map((p, i) => ({
+      name: p.name,
+      out: p.out,
+      published: results[i]?.published ?? 0,
+    }));
+    const stamp = new Date().toISOString();
+    writeFileSync(
+      resolve(outRoot, 'index.html'),
+      renderProfilesIndex(listed, config, stamp, cssText)
+    );
+    log(`  ↳ index of ${listed.length} portals -> ${resolve(outRoot, 'index.html')}`);
+  } catch (err) {
+    log(`  (skipped the portals index: ${err.message})`);
   }
   log(`commitport: built ${results.length} client portals.`);
   return {

@@ -7,6 +7,7 @@ import { parseLogOutput, parseCommit, classify } from '../scripts/lib/parse-comm
 import { translate, aiUserContent } from '../scripts/lib/translate.mjs';
 import {
   renderHTML, renderJSON, renderAtom, renderJsonFeed, collapseItems, assignEntryIds,
+  renderProfilesIndex,
 } from '../scripts/lib/render.mjs';
 import { auditPublishable } from '../scripts/lib/guard.mjs';
 import { checkCommitMessage } from '../scripts/check-commit-msg.mjs';
@@ -998,4 +999,40 @@ test('formatReport surfaces fixes and a summary line', () => {
   assert.match(out, /FAIL/);
   assert.match(out, /fix:/);
   assert.match(out, /problem/);
+});
+
+// ---------- print + multi-client index ----------
+
+test('portal carries print rules so a client can save a readable PDF', () => {
+  const items = [{ isoDate: '2026-06-10T10:00:00Z', emoji: '✨', category: 'New Feature', message: 'Launched booking' }];
+  const html = renderHTML(items, config, '2026-06-10T12:00:00Z', '');
+  assert.match(html, /@media print/);
+  assert.match(html, /background: #fff !important/); // dark theme must not follow it onto paper
+  assert.match(html, /break-inside: avoid/); // an update never splits across pages
+  // The source URL is hidden on screen and revealed only in print.
+  assert.match(html, /#print-url \{ display: none; \}/);
+  assert.match(html, /#print-url \{ display: block !important; \}/);
+  assert.match(html, /id="print-url"/);
+  // ...and omitted entirely when there's no public URL to print.
+  const noUrl = { ...config, site: { ...config.site, url: '' } };
+  assert.ok(!renderHTML(items, noUrl, '2026-06-10T12:00:00Z', '').includes('id="print-url"'));
+});
+
+test('profiles index lists every client portal and stays internal', () => {
+  const profiles = [
+    { name: 'Acme', out: 'acme', published: 3 },
+    { name: 'Globex', out: 'globex', published: 1 },
+  ];
+  const html = renderProfilesIndex(profiles, config, '2026-06-10T12:00:00Z', '');
+  assert.match(html, /href="acme\/"/);
+  assert.match(html, /href="globex\/"/);
+  assert.match(html, /3 updates published/);
+  assert.match(html, /1 update published/); // singular, not "1 updates"
+  assert.match(html, /2 client portals/);
+  // It names every client you serve, so it must never be indexed or handed out.
+  assert.match(html, /name="robots" content="noindex"/);
+  assert.match(html, /don't hand this link to any one of them/);
+  assert.ok(!/<script/i.test(html));
+  // Same style-breakout guard as the portal renderer.
+  assert.throws(() => renderProfilesIndex(profiles, config, '2026-06-10T12:00:00Z', '</style><script>1</script>'));
 });
