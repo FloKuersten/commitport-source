@@ -76,6 +76,7 @@ commitport build --watch    # rebuild automatically on each new commit or config
 commitport verify           # re-check ./public against its manifest.json
 commitport stats            # print a publish summary (by category) without writing
 commitport doctor           # check the setup and explain why nothing would publish
+commitport mcp              # speak MCP over stdio, for Claude Code / Cursor / any agent
 ```
 
 > You only need **git** installed. A license is still required to use it — see [License](#license--pricing).
@@ -83,6 +84,14 @@ commitport doctor           # check the setup and explain why nothing would publ
 Every build also drops a **shareable update** next to the portal: `email.html` (a self-contained snippet you paste into your mail client) and `update.md` (paste into email, Slack, anywhere), covering the last 7 days. Clients read email, not portals — commitport writes the update for you to send; it never sends anything itself. Turn it off with `"emailDigest": false`. Set `"embed": true` to also emit `embed.html`, a self-contained "latest updates" widget you can `<iframe>` into your own site.
 
 **Automate it:** copy [`examples/github-actions-portal.yml`](examples/github-actions-portal.yml) into your repo's `.github/workflows/` to rebuild and publish your portal to GitHub Pages on every push.
+
+**Use it from your AI tools (MCP):** commitport ships an MCP server, so Claude Code, Cursor, or any MCP-capable agent can preview how a commit will read to your client *before you commit*, run `doctor`/`stats`, build the portal, and verify output — all locally, nothing leaves your machine.
+
+```bash
+claude mcp add commitport -- commitport mcp
+```
+
+Or in any MCP client config: `{ "command": "commitport", "args": ["mcp"] }` (with the CLI bundle: `node scripts/generate.mjs mcp`). Tools: `commitport_preview`, `commitport_stats`, `commitport_doctor`, `commitport_build`, `commitport_verify`.
 
 ## How to flag commits for clients
 

@@ -1036,3 +1036,113 @@ test('profiles index lists every client portal and stays internal', () => {
   // Same style-breakout guard as the portal renderer.
   assert.throws(() => renderProfilesIndex(profiles, config, '2026-06-10T12:00:00Z', '</style><script>1</script>'));
 });
+
+// ---------- MCP server (protocol core) ----------
+
+const mcpDeps = (overrides = {}) => ({
+  version: 'test',
+  cwd: 'C:/repo',
+  existsSync: () => false, // no repo-local config -> starter config
+  joinPath: (...p) => p.join('/'),
+  loadConfig: () => ({ ...config }),
+  validateConfig: () => {},
+  mergeVocabPacks,
+  readGitLog: () => [],
+  parseCommit,
+  classify,
+  translate,
+  auditPublishable,
+  statsReport,
+  diagnose,
+  formatReport,
+  generateAll: async () => ({ published: 2, outDir: 'C:/repo/public' }),
+  verifyManifest: () => ({ ok: true, checked: 3, mismatches: [] }),
+  readAsset: () => readFileSync(new URL('../config/portal.config.json', import.meta.url), 'utf8'),
+  ...overrides,
+});
+const mcpCall = async (handle, method, params, id = 1) =>
+  handle({ jsonrpc: '2.0', id, method, params });
+
+test('mcp: initialize handshake, tool list, and unknown method', async () => {
+  const { createMcpCore } = await import('../scripts/lib/mcp.mjs');
+  const handle = createMcpCore(mcpDeps());
+
+  const init = await mcpCall(handle, 'initialize', { protocolVersion: '2025-06-18' });
+  assert.equal(init.result.protocolVersion, '2025-06-18'); // echoes the client's version
+  assert.equal(init.result.serverInfo.name, 'commitport');
+  assert.ok(init.result.capabilities.tools);
+
+  const list = await mcpCall(handle, 'tools/list');
+  const names = list.result.tools.map((t) => t.name);
+  assert.deepEqual(names, [
+    'commitport_preview',
+    'commitport_stats',
+    'commitport_doctor',
+    'commitport_build',
+    'commitport_verify',
+  ]);
+  // Every tool must carry a JSON Schema an agent can rely on.
+  assert.ok(list.result.tools.every((t) => t.inputSchema?.type === 'object'));
+
+  // A notification gets no reply; an unknown request gets -32601.
+  assert.equal(await handle({ jsonrpc: '2.0', method: 'notifications/initialized' }), null);
+  const unknown = await mcpCall(handle, 'no/such');
+  assert.equal(unknown.error.code, -32601);
+});
+
+test('mcp: preview tool translates like the real pipeline', async () => {
+  const { createMcpCore } = await import('../scripts/lib/mcp.mjs');
+  const handle = createMcpCore(mcpDeps());
+
+  const pub = await mcpCall(handle, 'tools/call', {
+    name: 'commitport_preview',
+    arguments: { subject: ':sparkles: feat: migrate auth module to new JWT standard' },
+  });
+  const out = JSON.parse(pub.result.content[0].text);
+  assert.equal(out.publishes, true);
+  assert.equal(out.clientSees, 'Upgraded login to new secure sign-in');
+
+  // Internal scope -> explains the denylist, doesn't just say "no".
+  const internal = await mcpCall(handle, 'tools/call', {
+    name: 'commitport_preview',
+    arguments: { subject: ':bug: fix(deps): bump eslint' },
+  });
+  assert.match(JSON.parse(internal.result.content[0].text).reason, /internal denylist/);
+
+  // A Client: note is published verbatim.
+  const note = await mcpCall(handle, 'tools/call', {
+    name: 'commitport_preview',
+    arguments: { subject: 'fix: x', clientNote: 'Checkout is faster now.' },
+  });
+  assert.equal(JSON.parse(note.result.content[0].text).clientSees, 'Checkout is faster now.');
+
+  // Missing subject -> a tool-level error, not a broken connection.
+  const bad = await mcpCall(handle, 'tools/call', { name: 'commitport_preview', arguments: {} });
+  assert.equal(bad.result.isError, true);
+});
+
+test('mcp: stats/build/verify wrap the injected implementations; throws become isError results', async () => {
+  const { createMcpCore } = await import('../scripts/lib/mcp.mjs');
+  const raw = (subject) => ({
+    hash: 'a'.repeat(40), isoDate: '2026-06-10T12:00:00Z', subject, clientTrailer: null, imageTrailer: null, body: '',
+  });
+  const handle = createMcpCore(
+    mcpDeps({ readGitLog: () => [raw(':sparkles: feat(client): ship'), raw('chore: tidy')] })
+  );
+
+  const stats = await mcpCall(handle, 'tools/call', { name: 'commitport_stats', arguments: {} });
+  const s = JSON.parse(stats.result.content[0].text);
+  assert.equal(s.published, 1);
+  assert.equal(s.scanned, 2);
+
+  const build = await mcpCall(handle, 'tools/call', { name: 'commitport_build', arguments: {} });
+  assert.match(build.result.content[0].text, /published: 2/);
+
+  const verify = await mcpCall(handle, 'tools/call', { name: 'commitport_verify', arguments: { out: 'x' } });
+  assert.match(verify.result.content[0].text, /verified 3 file/);
+
+  const boom = createMcpCore(mcpDeps({ readGitLog: () => { throw new Error('not a git repo'); } }));
+  const failed = await mcpCall(boom, 'tools/call', { name: 'commitport_stats', arguments: {} });
+  assert.equal(failed.result.isError, true);
+  assert.match(failed.result.content[0].text, /not a git repo/);
+});

@@ -36,6 +36,7 @@ const FILES = [
   'scripts/lib/vocab.mjs',
   'scripts/lib/manifest.mjs',
   'scripts/lib/doctor.mjs',
+  'scripts/lib/mcp.mjs',
   'scripts/lib/digest.mjs',
   'scripts/lib/cache.mjs',
   'config/portal.config.json',

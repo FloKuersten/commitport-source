@@ -5,7 +5,7 @@
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync, watch } from 'node:fs';
 import { execFileSync } from 'node:child_process';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { readGitLog, parseCommit, classify } from './lib/parse-commits.mjs';
@@ -22,6 +22,7 @@ import { diagnose, formatReport } from './lib/doctor.mjs';
 import { recentItems, renderEmailHtml, renderUpdateMarkdown, renderEmbed } from './lib/digest.mjs';
 import { loadCache, saveCache, cacheKey } from './lib/cache.mjs';
 import { launchGui } from './gui.mjs';
+import { runMcp } from './lib/mcp.mjs';
 
 // Detect single-executable mode (commitport.exe, built via Node SEA) FIRST:
 // import.meta.url is undefined inside a SEA, so anything deriving paths from it
@@ -255,6 +256,32 @@ async function main() {
     const ti = argv.indexOf('--template');
     return initConfig(ti >= 0 ? argv[ti + 1] : null);
   }
+  // `commitport mcp` — speak MCP over stdio so AI assistants (Claude Code,
+  // Cursor, …) can preview translations, run doctor/stats, build, and verify.
+  // Dependencies are injected here so mcp.mjs never imports this module back.
+  if (argv[0] === 'mcp') {
+    return runMcp({
+      version: '2.0.0',
+      cwd: process.cwd(),
+      existsSync,
+      joinPath: join,
+      loadConfig,
+      validateConfig,
+      mergeVocabPacks,
+      readGitLog,
+      parseCommit,
+      classify,
+      translate,
+      auditPublishable,
+      statsReport,
+      diagnose,
+      formatReport,
+      generateAll,
+      verifyManifest,
+      readAsset,
+    });
+  }
+
   // `commitport doctor` explains a setup BEFORE it disappoints someone: why
   // nothing would publish, what the guard would block, what's misconfigured.
   if (argv[0] === 'doctor') {
