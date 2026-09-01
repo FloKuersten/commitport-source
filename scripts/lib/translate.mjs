@@ -13,7 +13,9 @@
 
 // Structural noise (regex). Lexical removals live in config.dictionary as "".
 const NOISE = [
-  /`[^`]*`/g, // inline code spans
+  // NOTE: inline code spans are UNWRAPPED (backticks removed, content kept)
+  // below, not deleted — deleting the words breaks the sentence ("add
+  // `build --watch` for auto-rebuild" must not become "add for auto-rebuild").
   /\([^)]*\)/g, // parenthetical asides
   /\bv?\d+\.\d+(?:\.\d+)?\b/gi, // bare version numbers
   /\bwip\b/gi,
@@ -85,6 +87,7 @@ export function translate(commit, config) {
   }
 
   let text = commit.description || '';
+  text = text.replace(/`([^`]*)`/g, '$1'); // unwrap code spans, keep the words
   for (const re of NOISE) text = text.replace(re, ' ');
   text = tidy(text);
 
