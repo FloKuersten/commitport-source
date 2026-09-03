@@ -91,7 +91,7 @@ Every build also drops a **shareable update** next to the portal: `email.html` (
 claude mcp add commitport -- commitport mcp
 ```
 
-Or in any MCP client config: `{ "command": "commitport", "args": ["mcp"] }` (with the CLI bundle: `node scripts/generate.mjs mcp`). Tools: `commitport_preview`, `commitport_stats`, `commitport_doctor`, `commitport_build`, `commitport_verify` — four read-only, only `build` writes.
+Or in any MCP client config: `{ "command": "commitport", "args": ["mcp"] }` (with the CLI bundle: `node scripts/generate.mjs mcp`). Tools: `commitport_preview`, `commitport_client_update`, `commitport_stats`, `commitport_doctor`, `commitport_build`, `commitport_verify` — five read-only, only `build` writes. It also ships MCP **prompts** ("Draft this week's client update", "Write a client-ready commit message"), which appear as ready-made actions in MCP clients.
 
 **Claude Code plugin.** This repo is also a plugin marketplace, so two commands wire up the MCP server *and* a skill that teaches Claude the commit-marking workflow:
 

@@ -115,6 +115,31 @@ function toolList() {
       },
     },
     {
+      name: 'commitport_client_update',
+      title: 'Draft the client update',
+      annotations: {
+        title: 'Draft the client update',
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      description:
+        'Answer "what did you get done?" — returns the published, client-facing updates from the last N days as a ready-to-send markdown block. Use this when the user needs to tell a client what shipped, rather than composing an update from raw commits (which would leak internal work and engineer-speak).',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          days: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 365,
+            description: 'How many days back to cover, counting from the newest published update (default 7).',
+          },
+          ...repoProp,
+        },
+      },
+    },
+    {
       name: 'commitport_verify',
       title: 'Verify published output',
       annotations: {
@@ -135,6 +160,88 @@ function toolList() {
       },
     },
   ];
+}
+
+/**
+ * MCP prompts — surfaced by clients as ready-made actions (a slash command in
+ * Claude, an entry in Cursor). These are the two jobs people actually have:
+ * tell a client what shipped, and word a commit so it reads well when it does.
+ */
+const PROMPTS = [
+  {
+    name: 'client_update',
+    title: "Draft this week's client update",
+    description:
+      'Draft the update to send a client, from what has actually been published — not from raw commits.',
+    arguments: [
+      { name: 'days', description: 'How many days to cover (default 7).', required: false },
+      { name: 'client', description: 'Client or project name, if the repo serves several.', required: false },
+    ],
+  },
+  {
+    name: 'client_ready_commit',
+    title: 'Write a client-ready commit message',
+    description:
+      'Write a commit message for work a client should see, and check how it will read to them before committing.',
+    arguments: [
+      { name: 'work', description: 'What you changed, in your own words.', required: true },
+    ],
+  },
+];
+
+function promptMessages(name, args = {}) {
+  if (name === 'client_update') {
+    const days = args.days || '7';
+    const who = args.client ? ` for ${args.client}` : '';
+    return {
+      description: `Draft a client update${who} covering the last ${days} days`,
+      messages: [
+        {
+          role: 'user',
+          content: {
+            type: 'text',
+            text:
+              `Draft the progress update I should send my client${who}, covering the last ${days} days.
+
+` +
+              `Use the commitport_client_update tool with days=${days} — it returns only what has actually been ` +
+              `published to the client portal, already translated into plain English and checked by the leak guard. ` +
+              `Do NOT compose the update from raw git log output: that would leak internal work and read as engineer-speak.
+
+` +
+              `Then present it as a short message I can send: a one-line summary of the period, the updates themselves, ` +
+              `and a closing line. Keep my client's technical level in mind — plain language, impact not implementation. ` +
+              `Do not invent anything that is not in the tool's output; if it looks thin, say so rather than padding it.`,
+          },
+        },
+      ],
+    };
+  }
+  return {
+    description: 'Write a commit message a client can read',
+    messages: [
+      {
+        role: 'user',
+        content: {
+          type: 'text',
+          text:
+            `I changed: ${args.work || '(describe the change)'}
+
+` +
+            `Write a Conventional Commit message for this that will publish to my client portal — so it needs a ` +
+            `client marker: a gitmoji (:sparkles: :bug: :zap: :lock: …), a (client) scope, or a Client: trailer.
+
+` +
+            `Before you settle on it, call commitport_preview with the subject to see the exact sentence my client ` +
+            `will read. If that sentence reads badly, change the commit message and preview again. If the wording ` +
+            `really matters, put the exact sentence in a Client: trailer — that is published verbatim.
+
+` +
+            `Give me the final git command, and show me the client-facing line it produces.`,
+        },
+      },
+    ],
+  };
 }
 
 /**
@@ -162,6 +269,8 @@ export function createMcpCore(deps) {
     generateAll,
     verifyManifest,
     readAsset,
+    recentItems,
+    renderUpdateMarkdown,
   } = deps;
 
   // Resolve the effective config for a tool call: explicit path > repo-local
@@ -277,6 +386,40 @@ export function createMcpCore(deps) {
       );
     },
 
+    commitport_client_update(args = {}) {
+      const { cfg, classified } = pipeline(args);
+      if (!classified.length) {
+        return text(
+          'Nothing client-facing has been published in this repository yet, so there is no update to send. Run commitport_doctor to see why.'
+        );
+      }
+      const items = classified.map((c) => ({ ...c, message: translate(c, cfg).message }));
+      // The guard runs here too: an update drafted from commits must clear the
+      // same bar as one written to the portal.
+      const blocked = auditPublishable(
+        items.map((i) => i.message),
+        cfg.guard?.allow ?? [],
+        cfg.guard?.deny ?? []
+      );
+      if (blocked.length) {
+        return errText(
+          `The leak guard blocked ${blocked.length} message(s) — an update drafted from these would expose a secret, credential, email, or internal hostname. Reword the commit, or publish safe wording via a Client: trailer, before sending anything to a client.`
+        );
+      }
+      const days = Number.isInteger(args.days) ? args.days : 7;
+      const recent = recentItems(items, days);
+      if (!recent.length) {
+        return text(`No client-facing updates in the last ${days} day(s). Try a larger "days" value.`);
+      }
+      const stamp = recent[0].isoDate || new Date().toISOString();
+      return text(
+        `${renderUpdateMarkdown(recent, cfg, stamp)}
+
+---
+${recent.length} update(s) over the last ${days} day(s). This text is generated from published commits — send it as-is, or adjust the wording in the commits it came from.`
+      );
+    },
+
     commitport_verify(args) {
       if (!args || typeof args.out !== 'string' || !args.out.trim()) {
         return errText('out is required — the portal directory to verify.');
@@ -304,7 +447,7 @@ export function createMcpCore(deps) {
       case 'initialize':
         return rpcResult(id, {
           protocolVersion: params?.protocolVersion || PROTOCOL_FALLBACK,
-          capabilities: { tools: { listChanged: false } },
+          capabilities: { tools: { listChanged: false }, prompts: { listChanged: false } },
           serverInfo: { name: 'commitport', version },
           instructions:
             'commitport turns marked git commits into a client-ready progress portal. ' +
@@ -319,7 +462,14 @@ export function createMcpCore(deps) {
       case 'resources/list':
         return rpcResult(id, { resources: [] });
       case 'prompts/list':
-        return rpcResult(id, { prompts: [] });
+        return rpcResult(id, { prompts: PROMPTS });
+      case 'prompts/get': {
+        const name = params?.name;
+        if (!PROMPTS.some((p) => p.name === name)) {
+          return rpcError(id, -32602, `Unknown prompt: ${name}`);
+        }
+        return rpcResult(id, promptMessages(name, params?.arguments || {}));
+      }
       case 'tools/call': {
         const name = params?.name;
         const fn = tools[name];

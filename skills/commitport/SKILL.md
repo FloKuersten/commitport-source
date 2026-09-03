@@ -29,6 +29,17 @@ commitport_preview  subject: ":zap: perf(client): optimize database query indexi
 If `publishes` is `false`, the `reason` says why — either nothing marked it as
 client-facing, or an internal scope excluded it (which always wins, by design).
 
+## The other job: "what did you get done this week?"
+
+When the user needs to tell a client what shipped, call `commitport_client_update`
+(optionally `days`). It returns only what has actually been **published** —
+already translated into plain English and checked by the leak guard.
+
+Never compose a client update from raw `git log` output. That leaks internal work
+and reads as engineer-speak, which is the exact problem commitport exists to solve.
+If the tool returns nothing, say so and run `commitport_doctor` — do not pad the
+update with work the client was never shown.
+
 ## How a commit gets published
 
 A commit reaches the client portal if **any** of these is true:

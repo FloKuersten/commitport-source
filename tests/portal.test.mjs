@@ -1079,6 +1079,7 @@ test('mcp: initialize handshake, tool list, and unknown method', async () => {
     'commitport_stats',
     'commitport_doctor',
     'commitport_build',
+    'commitport_client_update',
     'commitport_verify',
   ]);
   // Every tool must carry a JSON Schema an agent can rely on.
@@ -1166,14 +1167,23 @@ test('plugin manifests are valid and point at a file the bundle actually ships',
   assert.equal(plugin.name, entry.name); // marketplace + manifest must agree
   assert.equal(plugin.version, entry.version);
 
-  // The MCP declaration must resolve to a real file via CLAUDE_PLUGIN_ROOT,
-  // and that file must be one publish-oss actually stages — otherwise the
-  // installed plugin would point at nothing.
-  const mcp = read(plugin.mcpServers.replace('./', ''));
-  const server = mcp.mcpServers.commitport;
-  assert.equal(server.command, 'node');
-  const target = server.args.find((a) => a.includes('${CLAUDE_PLUGIN_ROOT}'));
-  const rel = target.replace('${CLAUDE_PLUGIN_ROOT}/', '');
+  // Two DIFFERENT contexts, two different variables — mixing them is a real
+  // bug we shipped: a project-scope .mcp.json gets no CLAUDE_PLUGIN_ROOT, so
+  // the path stayed literal and the server died with "Connection closed".
+  const pluginServer = plugin.mcpServers.commitport;
+  assert.equal(pluginServer.command, 'node');
+  const pluginArg = pluginServer.args.find((a) => a.includes('scripts/generate.mjs'));
+  assert.ok(pluginArg.includes('${CLAUDE_PLUGIN_ROOT}'), 'plugin manifest must use CLAUDE_PLUGIN_ROOT');
+  assert.ok(!pluginArg.includes('${CLAUDE_PROJECT_DIR}'), 'plugin manifest must NOT use CLAUDE_PROJECT_DIR');
+
+  const projectServer = read('.mcp.json').mcpServers.commitport;
+  const projectArg = projectServer.args.find((a) => a.includes('scripts/generate.mjs'));
+  assert.ok(projectArg.includes('${CLAUDE_PROJECT_DIR}'), 'project .mcp.json must use CLAUDE_PROJECT_DIR');
+  assert.ok(!projectArg.includes('${CLAUDE_PLUGIN_ROOT}'), 'project .mcp.json must NOT use CLAUDE_PLUGIN_ROOT');
+
+  // Both must point at a file that actually exists and gets shipped.
+  const rel = pluginArg.replace('${CLAUDE_PLUGIN_ROOT}/', '');
+  assert.equal(rel, projectArg.replace('${CLAUDE_PROJECT_DIR}/', ''));
   assert.ok(existsSync(resolve(root, rel)), `${rel} must exist`);
 
   // publish-oss.mjs stages the public repo and is absent from it, so only
@@ -1203,4 +1213,66 @@ test('every MCP tool declares safety annotations, and only build writes', async 
   }
   const writers = tools.filter((t) => t.annotations.readOnlyHint === false).map((t) => t.name);
   assert.deepEqual(writers, ['commitport_build']); // exactly one tool touches disk
+});
+
+test('mcp: client-update tool drafts from published items and respects the leak guard', async () => {
+  const { createMcpCore } = await import('../scripts/lib/mcp.mjs');
+  const at = (days, subject) => ({
+    hash: 'a'.repeat(40),
+    isoDate: new Date(Date.UTC(2026, 5, 10 - days)).toISOString(),
+    subject, clientTrailer: null, imageTrailer: null, body: '',
+  });
+  const deps = (log) => ({
+    ...mcpDeps({ readGitLog: () => log }),
+    recentItems, renderUpdateMarkdown,
+  });
+
+  // Normal case: only published, translated items reach the draft.
+  let h = createMcpCore(deps([
+    at(0, ':sparkles: feat(client): add online booking'),
+    at(2, ':zap: perf(client): speed up search'),
+    at(1, 'chore(internal): rotate keys'), // internal — must not appear
+  ]));
+  let r = await mcpCall(h, 'tools/call', { name: 'commitport_client_update', arguments: {} });
+  const draft = r.result.content[0].text;
+  assert.match(draft, /Added online booking/);
+  assert.match(draft, /Sped up search/);
+  assert.ok(!/rotate keys/i.test(draft)); // internal work never reaches a client
+  assert.match(draft, /2 update\(s\)/);
+
+  // A secret in a client-facing message blocks the draft, not just the build.
+  h = createMcpCore(deps([at(0, ':bug: fix(client): rotate AKIAIOSFODNN7EXAMPLE key')]));
+  r = await mcpCall(h, 'tools/call', { name: 'commitport_client_update', arguments: {} });
+  assert.equal(r.result.isError, true);
+  assert.match(r.result.content[0].text, /leak guard/i);
+
+  // Nothing published -> points at doctor rather than inventing an update.
+  h = createMcpCore(deps([at(0, 'chore: tidy')]));
+  r = await mcpCall(h, 'tools/call', { name: 'commitport_client_update', arguments: {} });
+  assert.match(r.result.content[0].text, /commitport_doctor/);
+});
+
+test('mcp: prompts are advertised, render with arguments, and reject unknown names', async () => {
+  const { createMcpCore } = await import('../scripts/lib/mcp.mjs');
+  const handle = createMcpCore(mcpDeps());
+
+  const init = await mcpCall(handle, 'initialize', {});
+  assert.ok(init.result.capabilities.prompts, 'must advertise the prompts capability');
+
+  const { prompts } = (await mcpCall(handle, 'prompts/list')).result;
+  assert.deepEqual(prompts.map((p) => p.name), ['client_update', 'client_ready_commit']);
+  assert.ok(prompts.every((p) => p.title && p.description));
+
+  const got = await mcpCall(handle, 'prompts/get', {
+    name: 'client_update',
+    arguments: { days: '14', client: 'Acme' },
+  });
+  const body = got.result.messages[0].content.text;
+  assert.match(body, /Acme/);
+  assert.match(body, /last 14 days/);
+  // The prompt must steer the agent to the tool, not to raw git log.
+  assert.match(body, /commitport_client_update/);
+  assert.match(body, /Do NOT compose the update from raw git log/);
+
+  assert.equal((await mcpCall(handle, 'prompts/get', { name: 'nope' })).error.code, -32602);
 });

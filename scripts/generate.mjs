@@ -279,6 +279,8 @@ async function main() {
       generateAll,
       verifyManifest,
       readAsset,
+      recentItems,
+      renderUpdateMarkdown,
     });
   }
 
