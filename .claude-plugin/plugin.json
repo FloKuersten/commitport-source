@@ -1,0 +1,12 @@
+{
+  "name": "commitport",
+  "displayName": "commitport",
+  "version": "2.0.0",
+  "description": "Preview how a commit will read to your client before you commit it, then generate a client-ready progress portal from your git history. Local-only: no network, no telemetry.",
+  "author": { "name": "KueTech Digital e.U.", "url": "https://commitport.com" },
+  "homepage": "https://commitport.com",
+  "repository": "https://github.com/FloKuersten/commitport-source",
+  "license": "LicenseRef-commitport-Source-Available",
+  "keywords": ["git", "changelog", "client-reporting", "commits", "agency", "release-notes"],
+  "mcpServers": "./.mcp.json"
+}

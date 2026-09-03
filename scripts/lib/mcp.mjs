@@ -33,6 +33,14 @@ function toolList() {
   return [
     {
       name: 'commitport_preview',
+      title: 'Preview a commit as your client will read it',
+      annotations: {
+        title: 'Preview a commit as your client will read it',
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
       description:
         'Preview what one commit message would look like on the client portal — whether it publishes at all, and the plain-English translation a client would read. Use before committing to check wording.',
       inputSchema: {
@@ -54,18 +62,45 @@ function toolList() {
     },
     {
       name: 'commitport_stats',
+      title: 'Summarize what would publish',
+      annotations: {
+        title: 'Summarize what would publish',
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
       description:
         'Summarize what the repository would publish: totals (published / internal / scanned) and a per-category breakdown. Read-only.',
       inputSchema: { type: 'object', properties: repoProp },
     },
     {
       name: 'commitport_doctor',
+      title: 'Diagnose the portal setup',
+      annotations: {
+        title: 'Diagnose the portal setup',
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
       description:
         'Diagnose the setup and explain problems before a build: why nothing would publish, what the secret leak-guard would block, misconfigured client profiles, missing stylesheet or public URL. Read-only.',
       inputSchema: { type: 'object', properties: repoProp },
     },
     {
       name: 'commitport_build',
+      title: 'Build the client portal',
+      annotations: {
+        title: 'Build the client portal',
+        // Writes generated files into the output directory. It only ever
+        // rewrites commitport's own output, so it is not destructive, and
+        // rebuilding is deterministic — same commits, same bytes.
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
       description:
         'Generate the client portal (index.html, data.json, feeds, the ready-to-send email + update block) from the repository. Writes files into the output directory.',
       inputSchema: {
@@ -81,6 +116,14 @@ function toolList() {
     },
     {
       name: 'commitport_verify',
+      title: 'Verify published output',
+      annotations: {
+        title: 'Verify published output',
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
       description:
         'Re-check a built portal against its manifest.json: confirms the published files are byte-for-byte what commitport generated. Read-only.',
       inputSchema: {

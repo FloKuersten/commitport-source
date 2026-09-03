@@ -1146,3 +1146,54 @@ test('mcp: stats/build/verify wrap the injected implementations; throws become i
   assert.equal(failed.result.isError, true);
   assert.match(failed.result.content[0].text, /not a git repo/);
 });
+
+// ---------- Claude Code plugin packaging ----------
+
+test('plugin manifests are valid and point at a file the bundle actually ships', () => {
+  const root = fileURLToPath(new URL('..', import.meta.url));
+  const read = (rel) => JSON.parse(readFileSync(resolve(root, rel), 'utf8'));
+
+  const market = read('.claude-plugin/marketplace.json');
+  assert.match(market.name, /^[a-z0-9-]+$/); // kebab-case, per the schema
+  assert.ok(market.owner?.name);
+  assert.equal(market.plugins.length, 1);
+  const entry = market.plugins[0];
+  assert.match(entry.name, /^[a-z0-9-]+$/);
+  assert.ok(entry.source); // required
+  assert.ok(entry.description && entry.keywords?.length);
+
+  const plugin = read('.claude-plugin/plugin.json');
+  assert.equal(plugin.name, entry.name); // marketplace + manifest must agree
+  assert.equal(plugin.version, entry.version);
+
+  // The MCP declaration must resolve to a real file via CLAUDE_PLUGIN_ROOT,
+  // and that file must be one publish-oss actually stages — otherwise the
+  // installed plugin would point at nothing.
+  const mcp = read(plugin.mcpServers.replace('./', ''));
+  const server = mcp.mcpServers.commitport;
+  assert.equal(server.command, 'node');
+  const target = server.args.find((a) => a.includes('${CLAUDE_PLUGIN_ROOT}'));
+  const rel = target.replace('${CLAUDE_PLUGIN_ROOT}/', '');
+  assert.ok(existsSync(resolve(root, rel)), `${rel} must exist`);
+
+  const staged = readFileSync(resolve(root, 'scripts/publish-oss.mjs'), 'utf8');
+  for (const f of [rel, '.claude-plugin/marketplace.json', '.claude-plugin/plugin.json', '.mcp.json', 'skills/commitport/SKILL.md']) {
+    assert.ok(staged.includes(`'${f}'`), `publish-oss must ship ${f}`);
+  }
+});
+
+test('every MCP tool declares safety annotations, and only build writes', async () => {
+  const { createMcpCore } = await import('../scripts/lib/mcp.mjs');
+  const handle = createMcpCore({ existsSync: () => false, joinPath: (...p) => p.join('/'), readAsset: () => '{}' });
+  const { tools } = (await handle({ jsonrpc: '2.0', id: 1, method: 'tools/list' })).result;
+
+  for (const t of tools) {
+    assert.ok(t.annotations, `${t.name} needs annotations`);
+    assert.equal(typeof t.annotations.readOnlyHint, 'boolean', t.name);
+    assert.equal(t.annotations.openWorldHint, false, `${t.name} is local-only`);
+    assert.equal(t.annotations.destructiveHint, false, `${t.name} must not be destructive`);
+    assert.ok(t.annotations.title, `${t.name} needs a human title`);
+  }
+  const writers = tools.filter((t) => t.annotations.readOnlyHint === false).map((t) => t.name);
+  assert.deepEqual(writers, ['commitport_build']); // exactly one tool touches disk
+});

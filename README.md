@@ -91,7 +91,16 @@ Every build also drops a **shareable update** next to the portal: `email.html` (
 claude mcp add commitport -- commitport mcp
 ```
 
-Or in any MCP client config: `{ "command": "commitport", "args": ["mcp"] }` (with the CLI bundle: `node scripts/generate.mjs mcp`). Tools: `commitport_preview`, `commitport_stats`, `commitport_doctor`, `commitport_build`, `commitport_verify`.
+Or in any MCP client config: `{ "command": "commitport", "args": ["mcp"] }` (with the CLI bundle: `node scripts/generate.mjs mcp`). Tools: `commitport_preview`, `commitport_stats`, `commitport_doctor`, `commitport_build`, `commitport_verify` — four read-only, only `build` writes.
+
+**Claude Code plugin.** This repo is also a plugin marketplace, so two commands wire up the MCP server *and* a skill that teaches Claude the commit-marking workflow:
+
+```bash
+/plugin marketplace add FloKuersten/commitport-source
+/plugin install commitport@commitport
+```
+
+Then just write commits normally — Claude previews the client-facing wording before you commit, and runs `doctor` when a build publishes nothing. (Installing and evaluating is free; client, business, or production use needs a license.)
 
 ## How to flag commits for clients
 

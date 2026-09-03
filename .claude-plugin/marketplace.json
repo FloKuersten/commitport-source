@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "commitport",
+  "description": "commitport — turn the git commits you flag into a client-ready progress portal, in plain English.",
+  "owner": {
+    "name": "KueTech Digital e.U.",
+    "url": "https://commitport.com"
+  },
+  "plugins": [
+    {
+      "name": "commitport",
+      "source": "./",
+      "displayName": "commitport",
+      "description": "Preview how a commit will read to your client before you commit it, then generate a client-ready progress portal from your git history. Runs entirely locally.",
+      "version": "2.0.0",
+      "author": { "name": "KueTech Digital e.U.", "url": "https://commitport.com" },
+      "homepage": "https://commitport.com",
+      "repository": "https://github.com/FloKuersten/commitport-source",
+      "license": "LicenseRef-commitport-Source-Available",
+      "category": "productivity",
+      "keywords": [
+        "git", "changelog", "client-reporting", "commits", "agency",
+        "freelance", "release-notes", "progress-portal", "static-site"
+      ]
+    }
+  ]
+}
