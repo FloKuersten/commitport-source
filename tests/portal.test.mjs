@@ -1176,9 +1176,16 @@ test('plugin manifests are valid and point at a file the bundle actually ships',
   const rel = target.replace('${CLAUDE_PLUGIN_ROOT}/', '');
   assert.ok(existsSync(resolve(root, rel)), `${rel} must exist`);
 
-  const staged = readFileSync(resolve(root, 'scripts/publish-oss.mjs'), 'utf8');
-  for (const f of [rel, '.claude-plugin/marketplace.json', '.claude-plugin/plugin.json', '.mcp.json', 'skills/commitport/SKILL.md']) {
-    assert.ok(staged.includes(`'${f}'`), `publish-oss must ship ${f}`);
+  // publish-oss.mjs stages the public repo and is absent from it, so only
+  // audit the manifest when running in the source tree that owns it. In the
+  // published tree the equivalent check is simply that the files are present.
+  const publisher = resolve(root, 'scripts/publish-oss.mjs');
+  const shipped = [rel, '.claude-plugin/marketplace.json', '.claude-plugin/plugin.json', '.mcp.json', 'skills/commitport/SKILL.md'];
+  if (existsSync(publisher)) {
+    const staged = readFileSync(publisher, 'utf8');
+    for (const f of shipped) assert.ok(staged.includes(`'${f}'`), `publish-oss must ship ${f}`);
+  } else {
+    for (const f of shipped) assert.ok(existsSync(resolve(root, f)), `${f} must be present`);
   }
 });
 
