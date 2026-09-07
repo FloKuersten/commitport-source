@@ -1082,6 +1082,7 @@ test('mcp: initialize handshake, tool list, and unknown method', async () => {
     'commitport_build',
     'commitport_client_update',
     'commitport_suggest_marks',
+    'commitport_license_info',
     'commitport_verify',
   ]);
   // Every tool must carry a JSON Schema an agent can rely on.
@@ -1343,4 +1344,26 @@ test('mcp: suggest-marks tool is read-only and reports through the protocol', as
   const out = r.result.content[0].text;
   assert.match(out, /add CSV export/);
   assert.ok(!/rotate keys/.test(out)); // internal never surfaces
+});
+
+test('mcp: license-info is static, honest about price, and refuses to imply an agent can buy', async () => {
+  const { createMcpCore } = await import('../scripts/lib/mcp.mjs');
+  // No git, no fs, no fetch injected at all — proving the tool touches nothing.
+  const handle = createMcpCore({ existsSync: () => false, joinPath: (...p) => p.join('/'), readAsset: () => '{}' });
+
+  const r = await mcpCall(handle, 'tools/call', { name: 'commitport_license_info', arguments: {} });
+  const info = JSON.parse(r.result.content[0].text);
+  assert.equal(info.price.type, 'one-time');
+  assert.equal(info.price.recurring, false);
+  assert.ok(info.freeWithoutLicense.length >= 3); // the source-available boundary
+  assert.match(info.buyAt, /^https:\/\/commitport\.com/);
+  // An agent must not be led to believe it can transact unattended.
+  assert.equal(info.agentPurchase.supported, false);
+  assert.match(info.agentPurchase.guidance, /let them authorize|cannot complete/i);
+
+  const tool = (await mcpCall(handle, 'tools/list')).result.tools.find(
+    (t) => t.name === 'commitport_license_info'
+  );
+  assert.equal(tool.annotations.readOnlyHint, true);
+  assert.equal(tool.annotations.openWorldHint, false); // makes no network call
 });

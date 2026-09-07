@@ -160,6 +160,20 @@ function toolList() {
       },
     },
     {
+      name: 'commitport_license_info',
+      title: 'License terms and how to buy',
+      annotations: {
+        title: 'License terms and how to buy',
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      description:
+        'What commitport costs, what the licence covers, what is free without one, and where to buy. Use when the user asks about price, licensing, or whether they may use commitport for client work. Returns static facts — it makes no network call, and it cannot complete a purchase: a human authorizes payment at the checkout URL.',
+      inputSchema: { type: 'object', properties: {} },
+    },
+    {
       name: 'commitport_verify',
       title: 'Verify published output',
       annotations: {
@@ -451,6 +465,43 @@ ${recent.length} update(s) over the last ${days} day(s). This text is generated 
         limit: Number.isInteger(args.limit) ? args.limit : 10,
       });
       return text(formatSuggestions(report));
+    },
+
+    commitport_license_info() {
+      // Deliberately STATIC. The MCP server promises that nothing leaves the
+      // user's machine, so it must not phone home for pricing — and an agent
+      // must never be led to believe it can buy this unattended.
+      return text(
+        JSON.stringify(
+          {
+            product: 'commitport',
+            licenseModel: 'source-available (not OSI open source)',
+            price: { display: '€9', type: 'one-time', recurring: false, perSeat: false },
+            covers: [
+              'Client, business and production use',
+              'Unlimited projects and clients within one organization, forever',
+              'The prebuilt Windows installer and the macOS/Linux CLI bundle',
+            ],
+            freeWithoutLicense: [
+              'Read, audit, fork and modify the source',
+              'Build it from source',
+              'Run it locally to evaluate it',
+            ],
+            notPermitted: ['Reselling, sublicensing or redistributing it as a competing product'],
+            buyAt: 'https://commitport.com/#pricing',
+            liveDetails: 'https://commitport.com/api/product',
+            terms: 'https://commitport.com/terms',
+            source: 'https://github.com/FloKuersten/commitport-source',
+            agentPurchase: {
+              supported: false,
+              guidance:
+                'You cannot complete this purchase yourself. Show the user the price and the checkout URL, and let them authorize the payment. The licence key appears immediately after payment.',
+            },
+          },
+          null,
+          2
+        )
+      );
     },
 
     commitport_verify(args) {
