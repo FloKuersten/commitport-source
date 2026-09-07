@@ -17,6 +17,7 @@ import { mergeVocabPacks } from '../scripts/lib/vocab.mjs';
 import { buildManifest, verifyManifest } from '../scripts/lib/manifest.mjs';
 import { loadCache, saveCache, cacheKey } from '../scripts/lib/cache.mjs';
 import { diagnose, formatReport } from '../scripts/lib/doctor.mjs';
+import { suggestMarks, formatSuggestions } from '../scripts/lib/suggest.mjs';
 import { recentItems, renderEmailHtml, renderUpdateMarkdown, renderEmbed } from '../scripts/lib/digest.mjs';
 import { resolve, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1080,6 +1081,7 @@ test('mcp: initialize handshake, tool list, and unknown method', async () => {
     'commitport_doctor',
     'commitport_build',
     'commitport_client_update',
+    'commitport_suggest_marks',
     'commitport_verify',
   ]);
   // Every tool must carry a JSON Schema an agent can rely on.
@@ -1178,12 +1180,15 @@ test('plugin manifests are valid and point at a file the bundle actually ships',
 
   const projectServer = read('.mcp.json').mcpServers.commitport;
   const projectArg = projectServer.args.find((a) => a.includes('scripts/generate.mjs'));
-  assert.ok(projectArg.includes('${CLAUDE_PROJECT_DIR}'), 'project .mcp.json must use CLAUDE_PROJECT_DIR');
+  // Uses the documented ${VAR:-default} form so it still resolves if the
+  // variable is never expanded — the exact way this broke before.
+  assert.match(projectArg, /\$\{CLAUDE_PROJECT_DIR(:-[^}]*)?\}/, 'project .mcp.json must use CLAUDE_PROJECT_DIR');
+  assert.match(projectArg, /:-/, 'must carry a fallback default');
   assert.ok(!projectArg.includes('${CLAUDE_PLUGIN_ROOT}'), 'project .mcp.json must NOT use CLAUDE_PLUGIN_ROOT');
 
   // Both must point at a file that actually exists and gets shipped.
   const rel = pluginArg.replace('${CLAUDE_PLUGIN_ROOT}/', '');
-  assert.equal(rel, projectArg.replace('${CLAUDE_PROJECT_DIR}/', ''));
+  assert.equal(rel, projectArg.replace(/^\$\{CLAUDE_PROJECT_DIR(:-[^}]*)?\}\//, ''));
   assert.ok(existsSync(resolve(root, rel)), `${rel} must exist`);
 
   // publish-oss.mjs stages the public repo and is absent from it, so only
@@ -1275,4 +1280,67 @@ test('mcp: prompts are advertised, render with arguments, and reject unknown nam
   assert.match(body, /Do NOT compose the update from raw git log/);
 
   assert.equal((await mcpCall(handle, 'prompts/get', { name: 'nope' })).error.code, -32602);
+});
+
+// ---------- suggest marks ----------
+
+test('suggestMarks finds client-visible work that was never marked', () => {
+  const c = (subject, opts) => parseCommit(raw(subject, opts));
+  const parsed = [
+    c('feat: add CSV export to the dashboard'), // unmarked but user-visible
+    c('perf: optimize database query indexing'), // ditto
+    c(':sparkles: feat(client): already marked'), // publishes already
+    c('refactor(auth): split module'), // not client-visible by type
+    c('chore: tidy imports'), // ditto
+    c('feat(internal): secret admin tool'), // denylist — must NEVER be suggested
+    c('fix(deps): bump eslint'), // denylist scope
+  ];
+  const r = suggestMarks(parsed, config, { classify, translate, auditPublishable });
+
+  assert.equal(r.scanned, 7);
+  assert.equal(r.alreadyMarked, 1);
+  const subjects = r.suggestions.map((s) => s.subject);
+  assert.deepEqual(subjects, ['feat: add CSV export to the dashboard', 'perf: optimize database query indexing']);
+  // Privacy is absolute: nothing internal-scoped may ever be suggested.
+  assert.ok(!subjects.some((s) => /internal|deps/.test(s)));
+  // It shows the real client sentence, not a guess, plus how to publish it.
+  assert.equal(r.suggestions[0].wouldRead, 'Added CSV export to the dashboard');
+  assert.equal(r.suggestions[1].wouldRead, 'Sped up data lookups');
+  assert.match(r.suggestions[0].howToMark, /:sparkles:|\(client\)/);
+});
+
+test('suggestMarks never suggests something the leak guard would block, and honours limit', () => {
+  const c = (subject) => parseCommit(raw(subject));
+  const leaky = [c('fix: rotate AKIAIOSFODNN7EXAMPLE in the client config')];
+  const blocked = suggestMarks(leaky, config, { classify, translate, auditPublishable });
+  assert.equal(blocked.suggestions.length, 0, 'a suggestion must never lead someone to publish a secret');
+
+  const many = Array.from({ length: 12 }, (_, i) => c(`feat: add feature number ${i}`));
+  assert.equal(suggestMarks(many, config, { classify, translate, auditPublishable, limit: 3 }).suggestions.length, 3);
+
+  // Nothing to say -> says so, rather than inventing work.
+  const out = formatSuggestions(suggestMarks([c('chore: tidy')], config, { classify, translate, auditPublishable }));
+  assert.match(out, /nothing to suggest/);
+});
+
+test('mcp: suggest-marks tool is read-only and reports through the protocol', async () => {
+  const { createMcpCore } = await import('../scripts/lib/mcp.mjs');
+  const rec = (subject) => ({
+    hash: 'a'.repeat(40), isoDate: '2026-06-10T12:00:00Z', subject,
+    clientTrailer: null, imageTrailer: null, body: '',
+  });
+  const handle = createMcpCore({
+    ...mcpDeps({ readGitLog: () => [rec('feat: add CSV export'), rec('chore(internal): rotate keys')] }),
+    suggestMarks, formatSuggestions,
+  });
+
+  const { tools } = (await mcpCall(handle, 'tools/list')).result;
+  const tool = tools.find((t) => t.name === 'commitport_suggest_marks');
+  assert.ok(tool, 'tool must be advertised');
+  assert.equal(tool.annotations.readOnlyHint, true);
+
+  const r = await mcpCall(handle, 'tools/call', { name: 'commitport_suggest_marks', arguments: {} });
+  const out = r.result.content[0].text;
+  assert.match(out, /add CSV export/);
+  assert.ok(!/rotate keys/.test(out)); // internal never surfaces
 });

@@ -140,6 +140,26 @@ function toolList() {
       },
     },
     {
+      name: 'commitport_suggest_marks',
+      title: 'Find work the client should have seen',
+      annotations: {
+        title: 'Find work the client should have seen',
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+      description:
+        'Find commits that look client-facing but were never marked, so nothing the client would care about is silently withheld. Conservative on purpose: internal-scoped commits are never suggested, only feat/fix/perf qualify, and anything the leak guard would reject is dropped. Suggestions only — the user decides what publishes.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Maximum suggestions to return (default 10).' },
+          ...repoProp,
+        },
+      },
+    },
+    {
       name: 'commitport_verify',
       title: 'Verify published output',
       annotations: {
@@ -271,6 +291,8 @@ export function createMcpCore(deps) {
     readAsset,
     recentItems,
     renderUpdateMarkdown,
+    suggestMarks,
+    formatSuggestions,
   } = deps;
 
   // Resolve the effective config for a tool call: explicit path > repo-local
@@ -418,6 +440,17 @@ export function createMcpCore(deps) {
 ---
 ${recent.length} update(s) over the last ${days} day(s). This text is generated from published commits — send it as-is, or adjust the wording in the commits it came from.`
       );
+    },
+
+    commitport_suggest_marks(args = {}) {
+      const { cfg, parsed } = pipeline(args);
+      const report = suggestMarks(parsed, cfg, {
+        classify,
+        translate,
+        auditPublishable,
+        limit: Number.isInteger(args.limit) ? args.limit : 10,
+      });
+      return text(formatSuggestions(report));
     },
 
     commitport_verify(args) {

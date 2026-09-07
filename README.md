@@ -76,6 +76,7 @@ commitport build --watch    # rebuild automatically on each new commit or config
 commitport verify           # re-check ./public against its manifest.json
 commitport stats            # print a publish summary (by category) without writing
 commitport doctor           # check the setup and explain why nothing would publish
+commitport suggest          # find client-visible work you forgot to mark
 commitport mcp              # speak MCP over stdio, for Claude Code / Cursor / any agent
 ```
 
@@ -91,7 +92,7 @@ Every build also drops a **shareable update** next to the portal: `email.html` (
 claude mcp add commitport -- commitport mcp
 ```
 
-Or in any MCP client config: `{ "command": "commitport", "args": ["mcp"] }` (with the CLI bundle: `node scripts/generate.mjs mcp`). Tools: `commitport_preview`, `commitport_client_update`, `commitport_stats`, `commitport_doctor`, `commitport_build`, `commitport_verify` — five read-only, only `build` writes. It also ships MCP **prompts** ("Draft this week's client update", "Write a client-ready commit message"), which appear as ready-made actions in MCP clients.
+Or in any MCP client config: `{ "command": "commitport", "args": ["mcp"] }` (with the CLI bundle: `node scripts/generate.mjs mcp`). Tools: `commitport_preview`, `commitport_client_update`, `commitport_suggest_marks`, `commitport_stats`, `commitport_doctor`, `commitport_build`, `commitport_verify` — six read-only, only `build` writes. It also ships MCP **prompts** ("Draft this week's client update", "Write a client-ready commit message"), which appear as ready-made actions in MCP clients.
 
 **Claude Code plugin.** This repo is also a plugin marketplace, so two commands wire up the MCP server *and* a skill that teaches Claude the commit-marking workflow:
 

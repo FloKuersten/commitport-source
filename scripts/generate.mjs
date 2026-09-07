@@ -19,6 +19,7 @@ import { loadImageDataUri } from './lib/media.mjs';
 import { VOCAB_PACKS, mergeVocabPacks } from './lib/vocab.mjs';
 import { buildManifest, verifyManifest } from './lib/manifest.mjs';
 import { diagnose, formatReport } from './lib/doctor.mjs';
+import { suggestMarks, formatSuggestions } from './lib/suggest.mjs';
 import { recentItems, renderEmailHtml, renderUpdateMarkdown, renderEmbed } from './lib/digest.mjs';
 import { loadCache, saveCache, cacheKey } from './lib/cache.mjs';
 import { launchGui } from './gui.mjs';
@@ -281,6 +282,8 @@ async function main() {
       readAsset,
       recentItems,
       renderUpdateMarkdown,
+      suggestMarks,
+      formatSuggestions,
     });
   }
 
@@ -338,6 +341,30 @@ async function main() {
     });
     console.log(formatReport(report));
     if (!report.ok) process.exitCode = 1;
+    return;
+  }
+
+  // `commitport suggest` surfaces client-visible work that was never marked —
+  // the failure the rest of the tool can't see, because an unmarked commit
+  // simply never appears.
+  if (argv[0] === 'suggest') {
+    const a = parseArgs(argv.slice(1));
+    const config = loadConfig(a.config);
+    validateConfig(config);
+    if (config.vocabPacks?.length)
+      config.dictionary = mergeVocabPacks(config.dictionary, config.vocabPacks);
+    const raw = readGitLog({
+      sinceTag: a.since ?? config.range?.sinceTag ?? null,
+      after: a.after ?? config.range?.after ?? null,
+      before: a.before ?? config.range?.before ?? null,
+      includePaths: config.includePaths ?? [],
+      cwd: a.repo ? resolve(a.repo) : BASE,
+    });
+    console.log(
+      formatSuggestions(
+        suggestMarks(raw.map(parseCommit), config, { classify, translate, auditPublishable })
+      )
+    );
     return;
   }
 

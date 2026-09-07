@@ -40,6 +40,18 @@ and reads as engineer-speak, which is the exact problem commitport exists to sol
 If the tool returns nothing, say so and run `commitport_doctor` — do not pad the
 update with work the client was never shown.
 
+## Proactive: work the client should have seen
+
+An unmarked commit is invisible — it never publishes and nothing complains. Call
+`commitport_suggest_marks` when the user is wrapping up a week, preparing an
+update, or asks whether the client is up to date. It lists unmarked commits whose
+type says the change is user-visible, with the sentence each would produce.
+
+Treat the results as **suggestions for the user to approve**, never as something
+to publish on their behalf: propose the marker, show what the client would read,
+and let them decide. Internal-scoped commits are never suggested, and you must
+never propose re-scoping one to get it published.
+
 ## How a commit gets published
 
 A commit reaches the client portal if **any** of these is true:
