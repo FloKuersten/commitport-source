@@ -38,7 +38,7 @@ jobs:
           node-version: 20
 
       - name: Get commitport
-        run: git clone --depth 1 https://github.com/FloKuersten/commitport.git "$RUNNER_TEMP/commitport"
+        run: git clone --depth 1 https://github.com/FloKuersten/commitport-source.git "$RUNNER_TEMP/commitport"
 
       - name: Build the portal
         working-directory: ${{ runner.temp }}/commitport
@@ -47,6 +47,70 @@ jobs:
             --repo "$GITHUB_WORKSPACE" \
             --config "$GITHUB_WORKSPACE/portal.config.json" \
             --out "$GITHUB_WORKSPACE/public"
+
+      # OPTIONAL — post the update straight into the Discord channel you share
+      # with the client. Clients read messages; they rarely visit a portal.
+      #
+      # Setup: Discord → Server Settings → Integrations → Webhooks → New Webhook,
+      # pick the client's channel, Copy Webhook URL, then add it in GitHub under
+      # Settings → Secrets and variables → Actions as DISCORD_WEBHOOK_URL.
+      #
+      # It posts the SAME text commitport already wrote to update.md — the
+      # translated, leak-guarded lines, never raw commits. No bot, no hosting.
+      # Skipped entirely when the secret is absent or nothing shipped recently.
+      - name: Post the update to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          node - <<'EOF'
+          // Runs as CommonJS (node reads stdin), so no top-level await here.
+          const { readFileSync } = require('node:fs');
+
+          (async () => {
+            const hook = process.env.DISCORD_WEBHOOK_URL;
+            // Checked here rather than in `if:` — a step's own env is not
+            // dependable in its condition, and this no-ops just as cheaply.
+            if (!hook) {
+              console.log('No DISCORD_WEBHOOK_URL secret set — skipping.');
+              return;
+            }
+
+            let body;
+            try {
+              body = readFileSync(`${process.env.GITHUB_WORKSPACE}/public/update.md`, 'utf8').trim();
+            } catch {
+              console.log('No update.md — nothing shipped in the digest window. Not posting.');
+              return;
+            }
+            if (!body) {
+              console.log('update.md is empty. Not posting.');
+              return;
+            }
+
+            // Discord hard-caps a message at 2000 characters; trim on a line
+            // boundary so an update never ends mid-sentence in front of a client.
+            const LIMIT = 1900;
+            if (body.length > LIMIT) {
+              const cut = body.slice(0, LIMIT);
+              const nl = cut.lastIndexOf('\n');
+              body = (nl > 0 ? cut.slice(0, nl) : cut) + '\n\n…see the full portal for the rest.';
+            }
+
+            const res = await fetch(hook, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              // allowed_mentions empty: a client update must never ping
+              // @everyone, even if a commit message happens to contain it.
+              body: JSON.stringify({ content: body, allowed_mentions: { parse: [] } }),
+            });
+            if (!res.ok) {
+              console.error(`Discord rejected the post: ${res.status} ${await res.text()}`);
+              process.exitCode = 1;
+              return;
+            }
+            console.log('Posted the client update to Discord.');
+          })();
+          EOF
 
       - uses: actions/upload-pages-artifact@v3
         with:

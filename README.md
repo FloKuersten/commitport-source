@@ -86,6 +86,20 @@ Every build also drops a **shareable update** next to the portal: `email.html` (
 
 **Automate it:** copy [`examples/github-actions-portal.yml`](examples/github-actions-portal.yml) into your repo's `.github/workflows/` to rebuild and publish your portal to GitHub Pages on every push.
 
+**Post it into Discord.** A portal only helps if someone opens it. The same
+workflow has an optional last step that POSTs `update.md` to a Discord webhook,
+so the client is told in the channel you already share with them. Create a
+webhook in *Channel settings → Integrations → Webhooks*, save the URL as the
+repository secret `DISCORD_WEBHOOK_URL`, and that's it — no account anywhere,
+nothing extra to pay for. The step is skipped when the secret is absent or
+nothing client-facing shipped, so a quiet week posts nothing.
+
+Running several client channels and would rather not wire up CI? The
+[Farvis](https://farvis.me/pricing) Discord bot can watch a portal's feed and
+post updates for you as part of its own subscription. It reads the published
+feed only — never a repository, a commit, or your code — so the guarantee below
+still holds. commitport never requires it.
+
 **Use it from your AI tools (MCP):** commitport ships an MCP server, so Claude Code, Cursor, or any MCP-capable agent can preview how a commit will read to your client *before you commit*, run `doctor`/`stats`, build the portal, and verify output — all locally, nothing leaves your machine.
 
 ```bash
@@ -102,6 +116,13 @@ Or in any MCP client config: `{ "command": "commitport", "args": ["mcp"] }` (wit
 ```
 
 Then just write commits normally — Claude previews the client-facing wording before you commit, and runs `doctor` when a build publishes nothing. (Installing and evaluating is free; client, business, or production use needs a license.)
+
+**Agents can buy it too.** commitport accepts machine payments over the open
+[Machine Payments Protocol](https://mpp.dev): an agent `POST`s to
+`https://commitport.com/pay`, answers the HTTP 402 challenge with a token from
+the wallet its user funds, and gets the licence key back with the receipt. A
+browser opening the same URL gets the normal checkout. A human funds every
+payment either way.
 
 ## How to flag commits for clients
 

@@ -1346,7 +1346,7 @@ test('mcp: suggest-marks tool is read-only and reports through the protocol', as
   assert.ok(!/rotate keys/.test(out)); // internal never surfaces
 });
 
-test('mcp: license-info is static, honest about price, and refuses to imply an agent can buy', async () => {
+test('mcp: license-info is static, honest about price, and never tells an agent to spend unattended', async () => {
   const { createMcpCore } = await import('../scripts/lib/mcp.mjs');
   // No git, no fs, no fetch injected at all — proving the tool touches nothing.
   const handle = createMcpCore({ existsSync: () => false, joinPath: (...p) => p.join('/'), readAsset: () => '{}' });
@@ -1357,9 +1357,12 @@ test('mcp: license-info is static, honest about price, and refuses to imply an a
   assert.equal(info.price.recurring, false);
   assert.ok(info.freeWithoutLicense.length >= 3); // the source-available boundary
   assert.match(info.buyAt, /^https:\/\/commitport\.com/);
-  // An agent must not be led to believe it can transact unattended.
-  assert.equal(info.agentPurchase.supported, false);
-  assert.match(info.agentPurchase.guidance, /let them authorize|cannot complete/i);
+  // Agent purchase is live over MPP now, but the guidance must still insist a
+  // human funds it — an agent must never be told to spend unattended.
+  assert.equal(info.agentPurchase.supported, true);
+  assert.match(info.agentPurchase.endpoint, /^https:\/\/commitport\.com\/pay$/);
+  assert.match(info.agentPurchase.protocol, /MPP/);
+  assert.match(info.agentPurchase.guidance, /never spend without authorization|let them authorize/i);
 
   const tool = (await mcpCall(handle, 'tools/list')).result.tools.find(
     (t) => t.name === 'commitport_license_info'

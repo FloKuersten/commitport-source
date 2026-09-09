@@ -493,9 +493,12 @@ ${recent.length} update(s) over the last ${days} day(s). This text is generated 
             terms: 'https://commitport.com/terms',
             source: 'https://github.com/FloKuersten/commitport-source',
             agentPurchase: {
-              supported: false,
+              supported: true,
+              protocol: 'MPP (https://mpp.dev)',
+              endpoint: 'https://commitport.com/pay',
+              handoffEndpoint: 'https://commitport.com/api/agent/checkout',
               guidance:
-                'You cannot complete this purchase yourself. Show the user the price and the checkout URL, and let them authorize the payment. The licence key appears immediately after payment.',
+                'If you have a wallet that can answer an HTTP 402 challenge, POST to the endpoint, pay the challenge with a shared payment token, and retry to receive the licence key. Otherwise POST to the handoff endpoint to get a one-click buy link prepared for your user, and show them that. Either way a human funds the payment — never spend without authorization from your user.',
             },
           },
           null,
