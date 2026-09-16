@@ -94,12 +94,6 @@ repository secret `DISCORD_WEBHOOK_URL`, and that's it — no account anywhere,
 nothing extra to pay for. The step is skipped when the secret is absent or
 nothing client-facing shipped, so a quiet week posts nothing.
 
-Running several client channels and would rather not wire up CI? The
-[Farvis](https://farvis.me/pricing) Discord bot can watch a portal's feed and
-post updates for you as part of its own subscription. It reads the published
-feed only — never a repository, a commit, or your code — so the guarantee below
-still holds. commitport never requires it.
-
 **Use it from your AI tools (MCP):** commitport ships an MCP server, so Claude Code, Cursor, or any MCP-capable agent can preview how a commit will read to your client *before you commit*, run `doctor`/`stats`, build the portal, and verify output — all locally, nothing leaves your machine.
 
 ```bash
